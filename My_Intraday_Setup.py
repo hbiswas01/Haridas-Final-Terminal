@@ -144,4 +144,5 @@ with st.sidebar:
 
 # --- ৬. টপ নেভিগেশন ও টিকেট ---
 curr_time = datetime.datetime.now()
-session_label = "LIVE MARKET" if 9 <= curr_time.hour
+session_label = "LIVE MARKET" if 9 <= curr_time.hour < 15 else "POST MARKET"
+
