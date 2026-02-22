@@ -26,7 +26,7 @@ FNO_SECTORS = {
     "NIFTY PSU BANK": ["SBIN.NS", "PNB.NS", "BOB.NS", "CANBK.NS"]
 }
 
-# 🚨 NIFTY 50 Master List for Accurate Market Breadth
+# 🚨 NIFTY 50 Master List
 NIFTY_50 = [
     "ADANIENT.NS", "ADANIPORTS.NS", "APOLLOHOSP.NS", "ASIANPAINT.NS", "AXISBANK.NS", 
     "BAJAJ-AUTO.NS", "BAJFINANCE.NS", "BAJAJFINSV.NS", "BPCL.NS", "BHARTIARTL.NS", 
@@ -39,7 +39,7 @@ NIFTY_50 = [
     "TATAMOTORS.NS", "TATASTEEL.NS", "TECHM.NS", "TITAN.NS", "ULTRACEMCO.NS", "UPL.NS", "WIPRO.NS"
 ]
 
-# 🚨 NIFTY NEXT 50 to make the Advance/Decline true "ALL STOCKS" sentiment
+# 🚨 NIFTY NEXT 50 for broader sentiment
 NIFTY_NEXT_50 = [
     "ABB.NS", "ADANIENSOL.NS", "ADANIGREEN.NS", "AMBUJACEM.NS", "DMART.NS",
     "BAJAJHLDNG.NS", "BANKBARODA.NS", "BEL.NS", "BOSCHLTD.NS", "CANBK.NS",
@@ -53,7 +53,7 @@ NIFTY_NEXT_50 = [
     "MCDOWELL-N.NS", "VBL.NS", "VEDL.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
 ]
 
-# 🚨 All Sectors Stocks + Nifty 50 + Next 50 for True Advance/Decline (Market Sentiment)
+# 🚨 All Selected Stocks for True Advance/Decline Sentiment
 ALL_STOCKS = list(set([stock for slist in FNO_SECTORS.values() for stock in slist] + NIFTY_50 + NIFTY_NEXT_50))
 
 @st.cache_data(ttl=30)
@@ -103,16 +103,13 @@ def get_real_sector_performance():
             results.append({"Sector": sector, "Pct": avg_pct, "Width": max(bw, 5)})
     return sorted(results, key=lambda x: x['Pct'], reverse=True)
 
-# 🚨 SUPER FAST LIVE Advance/Decline Logic using Multi-Threading
 @st.cache_data(ttl=60)
 def get_adv_dec(stock_list):
     adv, dec = 0, 0
-    
     def fetch_chg(ticker):
         _, change, _ = get_live_data(ticker)
         return change
 
-    # Fetching 30 stocks at the same time to process the big list quickly
     with ThreadPoolExecutor(max_workers=30) as executor:
         results = list(executor.map(fetch_chg, stock_list))
         
@@ -243,7 +240,7 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
         except: continue
     return signals
 
-# --- 4. CSS (NO TRIPLE QUOTES - 100% Safe) ---
+# --- 4. CSS (Adjusted for 3 Column Grid) ---
 css_string = (
     "<style>"
     "#MainMenu {visibility: hidden;} footer {visibility: hidden;} "
@@ -257,8 +254,8 @@ css_string = (
     ".v38-table th { background-color: #4f81bd; color: white; padding: 8px; border: 1px solid #b0c4de; font-weight: bold; } "
     ".v38-table td { padding: 8px; border: 1px solid #b0c4de; } "
     ".idx-container { display: flex; justify-content: space-between; background: white; border: 1px solid #b0c4de; padding: 5px; margin-bottom: 10px; flex-wrap: wrap; border-radius: 5px; } "
-    ".idx-box { text-align: center; width: 23%; border-right: 1px solid #eee; padding: 5px; min-width: 100px; } "
-    ".idx-box:last-child { border-right: none; } "
+    ".idx-box { text-align: center; width: 31%; border-right: 1px solid #eee; padding: 5px; min-width: 100px; margin-bottom: 5px; } "
+    ".idx-box:nth-child(3n) { border-right: none; } "
     ".adv-dec-container { background: white; border: 1px solid #b0c4de; padding: 10px; margin-bottom: 10px; text-align: center; border-radius: 5px; } "
     ".adv-dec-bar { display: flex; height: 14px; border-radius: 4px; overflow: hidden; margin: 8px 0; } "
     ".bar-green { background-color: #2e7d32; } .bar-red { background-color: #d32f2f; } "
@@ -290,7 +287,6 @@ with st.sidebar:
 ist_timezone = pytz.timezone('Asia/Kolkata')
 curr_time = datetime.datetime.now(ist_timezone)
 
-# Fix time objects for comparison to keep them timezone aware
 t_915 = curr_time.replace(hour=9, minute=15, second=0, microsecond=0)
 t_1530 = curr_time.replace(hour=15, minute=30, second=0, microsecond=0)
 
@@ -338,13 +334,25 @@ if page_selection == "📈 MAIN TERMINAL":
 
     with col2:
         st.markdown("<div class='section-title'>📉 MARKET INDICES (LIVE)</div>", unsafe_allow_html=True)
-        nifty_ltp, nifty_chg, nifty_pct = get_live_data("^NSEI")
-        bank_ltp, bank_chg, bank_pct = get_live_data("^NSEBANK")
+        
+        # 🚨 Fetching data for the 6 new indices 
         sensex_ltp, sensex_chg, sensex_pct = get_live_data("^BSESN")
-        it_ltp, it_chg, it_pct = get_live_data("^CNXIT") 
+        nifty_ltp, nifty_chg, nifty_pct = get_live_data("^NSEI")
+        usdinr_ltp, usdinr_chg, usdinr_pct = get_live_data("INR=X")
+        bank_ltp, bank_chg, bank_pct = get_live_data("^NSEBANK")
+        mid100_ltp, mid100_chg, mid100_pct = get_live_data("^CRSMY")
+        small100_ltp, small100_chg, small100_pct = get_live_data("^CRSLDX")
         
         indices_html = "<div class='idx-container'>"
-        indices = [("SENSEX", sensex_ltp, sensex_chg, sensex_pct), ("NIFTY 50", nifty_ltp, nifty_chg, nifty_pct), ("NIFTY BANK", bank_ltp, bank_chg, bank_pct), ("NIFTY IT", it_ltp, it_chg, it_pct)]
+        indices = [
+            ("Sensex", sensex_ltp, sensex_chg, sensex_pct), 
+            ("Nifty", nifty_ltp, nifty_chg, nifty_pct), 
+            ("USDINR", usdinr_ltp, usdinr_chg, usdinr_pct),
+            ("Nifty Bank", bank_ltp, bank_chg, bank_pct),
+            ("Nifty Mid100", mid100_ltp, mid100_chg, mid100_pct),
+            ("Nifty Small100", small100_ltp, small100_chg, small100_pct)
+        ]
+        
         for name, val, chg, pct in indices:
             clr = "green" if chg >= 0 else "red"
             sign = "+" if chg >= 0 else ""
@@ -352,8 +360,8 @@ if page_selection == "📈 MAIN TERMINAL":
         indices_html += "</div>"
         st.markdown(indices_html, unsafe_allow_html=True)
 
-        # 🚨 PURE LIVE ADV/DEC FOR ALL STOCKS 🚨
-        with st.spinner("Calculating Adv/Dec for ALL Stocks..."):
+        # 🚨 Advance/Decline Label updated to "Advance/ Decline (NSE)"
+        with st.spinner("Calculating Adv/Dec..."):
             adv, dec = get_adv_dec(ALL_STOCKS)
         
         total_adv_dec = adv + dec
@@ -361,7 +369,7 @@ if page_selection == "📈 MAIN TERMINAL":
         
         adv_dec_html = (
             "<div class='adv-dec-container'>"
-            "<div style='font-size:12px; font-weight:bold; color:#003366;'>📊 REAL-TIME ADVANCE / DECLINE (ALL STOCKS)</div>"
+            "<div style='font-size:12px; font-weight:bold; color:#003366;'>📊 Advance/ Decline (NSE)</div>"
             "<div class='adv-dec-bar'>"
             f"<div class='bar-green' style='width: {adv_pct}%;'></div>"
             f"<div class='bar-red' style='width: {100-adv_pct}%;'></div>"
@@ -462,7 +470,6 @@ elif page_selection == "⚙️ Scanner Settings":
     st.header("⚙️ Scanner Settings")
     st.success("Your terminal is 100% PURE LIVE using yfinance. No Dummy Data is running in the background.")
 
-# 🚨 REAL BACKTEST ENGINE ADDED HERE 🚨
 elif page_selection == "📊 Backtest Engine":
     st.header("📊 Backtest Engine (Real Historical Data)")
     st.markdown("Test your **3-Day Continuous Trend (Uptrend/Downtrend)** strategy using historical market data.")
@@ -484,14 +491,12 @@ elif page_selection == "📊 Backtest Engine":
                         c2, o2 = bt_data['Close'].iloc[i-2], bt_data['Open'].iloc[i-2]
                         c3, o3 = bt_data['Close'].iloc[i-3], bt_data['Open'].iloc[i-3]
 
-                        # 3 Days Up -> Reversal/Short Logic
                         if c1 > o1 and c2 > o2 and c3 > o3:
                             entry_price = bt_data['Open'].iloc[i]
                             exit_price = bt_data['Close'].iloc[i]
                             pnl = ((entry_price - exit_price) / entry_price) * 100
                             trades.append({"Date": bt_data.index[i].strftime('%Y-%m-%d'), "Setup": "3 Days GREEN", "Signal": "SHORT", "Entry": round(entry_price, 2), "Exit (EOD)": round(exit_price, 2), "P&L %": round(pnl, 2)})
                         
-                        # 3 Days Down -> Bounce/Buy Logic
                         elif c1 < o1 and c2 < o2 and c3 < o3:
                             entry_price = bt_data['Open'].iloc[i]
                             exit_price = bt_data['Close'].iloc[i]
@@ -501,8 +506,6 @@ elif page_selection == "📊 Backtest Engine":
                     bt_df = pd.DataFrame(trades)
                     if not bt_df.empty:
                         st.success(f"✅ Backtest completed for {bt_stock} over the last {bt_period}. Found {len(bt_df)} setups.")
-                        
-                        # Display Metrics
                         total_pnl = bt_df['P&L %'].sum()
                         win_rate = (len(bt_df[bt_df['P&L %'] > 0]) / len(bt_df)) * 100
                         
