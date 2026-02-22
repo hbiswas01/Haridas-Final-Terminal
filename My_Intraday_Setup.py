@@ -5,9 +5,9 @@ import pandas as pd
 import time
 
 # --- ১. পেজ কনফিগারেশন ---
-st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v40.4", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v40.5", initial_sidebar_state="expanded")
 
-# --- ২. লাইভ মার্কেট ডেটা ও নিউজ ইঞ্জিন ---
+# --- ২. লাইভ মার্কেট ডেটা, নিউজ ও Adv/Dec ইঞ্জিন ---
 FNO_SECTORS = {
     "MIXED WATCHLIST": ["HINDALCO.NS", "NTPC.NS", "WIPRO.NS", "RELIANCE.NS", "HDFCBANK.NS", "TCS.NS", "INFY.NS", "ITC.NS", "SBIN.NS", "BHARTIARTL.NS"],
     "NIFTY METAL": ["HINDALCO.NS", "TATASTEEL.NS", "VEDL.NS", "JSWSTEEL.NS", "NMDC.NS", "COALINDIA.NS"],
@@ -32,19 +32,41 @@ def get_live_data(ticker_symbol):
     except:
         return 0.0, 0.0, 0.0
 
+# 🚨 রিয়েল লাইভ নিউজ ফেস করার গ্যারান্টি ইঞ্জিন
 @st.cache_data(ttl=300)
 def get_market_news():
-    try:
-        tk = yf.Ticker("RELIANCE.NS")
-        news_data = tk.news
-        if news_data:
-            headlines = " 🔹 ".join([item['title'] for item in news_data[:5]])
-            return f"📰 <b>LIVE MARKET NEWS:</b> {headlines} 🔹"
-        return "📰 LIVE MARKET NEWS: Indian Markets showing strong resilience today... 🔹"
-    except:
-        return "📰 LIVE MARKET NEWS: FII/DII data awaited. Stay cautious in first 15 mins. 🔹"
+    tickers_to_try = ["RELIANCE.NS", "HDFCBANK.NS", "INFY.NS", "TCS.NS"]
+    headlines = []
+    for t in tickers_to_try:
+        try:
+            news = yf.Ticker(t).news
+            if news:
+                for n in news[:2]:
+                    if 'title' in n: headlines.append(n['title'])
+            if len(headlines) >= 4: break
+        except: pass
+        
+    if headlines:
+        return " 🔹 ".join(headlines) + " 🔹"
+    return "📰 LIVE MARKET NEWS: Market showing sector rotation. Trade with strict Stop Loss... 🔹"
 
-# 🚨 নতুন ইঞ্জিন: ডাইনামিক গেইনার, লুজার এবং ট্রেন্ড কন্টিনিউটি 🚨
+# 🚨 রিয়েল Advance/Decline ক্যালকুলেটর (তোর সিলেক্ট করা সেক্টরের জন্য)
+@st.cache_data(ttl=60)
+def get_adv_dec(stock_list):
+    adv, dec = 0, 0
+    for ticker in stock_list:
+        try:
+            stock = yf.Ticker(ticker)
+            df = stock.history(period="1d")
+            if not df.empty:
+                prev_close = stock.fast_info.previous_close
+                ltp = df['Close'].iloc[-1]
+                if ltp >= prev_close: adv += 1
+                else: dec += 1
+        except: pass
+    if adv == 0 and dec == 0: return 1, 1 # zero division error আটকানোর জন্য
+    return adv, dec
+
 @st.cache_data(ttl=120)
 def get_dynamic_market_data(stock_list):
     gainers, losers, trends = [], [], []
@@ -64,7 +86,6 @@ def get_dynamic_market_data(stock_list):
                 if pct_chg >= 0: gainers.append(obj)
                 else: losers.append(obj)
                 
-                # ৩ দিনের কন্টিনিউটি চেক
                 if c1 > o1 and c2 > o2 and c3 > o3:
                     trends.append({"Stock": ticker, "Status": "৩ দিন উত্থান", "Color": "green"})
                 elif c1 < o1 and c2 < o2 and c3 < o3:
@@ -106,6 +127,7 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
             signal = None
             entry = sl = 0.0
             
+            # 🚨 Opposite Color Logic (তোর স্ট্র্যাটেজি)
             if market_sentiment == "BULLISH" and is_red and is_lowest_vol:
                 signal = "BUY"
                 entry = completed_candle['High'] + 0.50
@@ -171,7 +193,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- ৫. সাইডবার (Menu, Settings, Timer) ---
+# --- ৫. সাইডবার (Menu & Real Settings) ---
 with st.sidebar:
     st.markdown("### 🎛️ HARIDAS DASHBOARD")
     page_selection = st.radio("Select Menu:", [
@@ -184,8 +206,8 @@ with st.sidebar:
     st.divider()
     
     st.markdown("### ⚙️ STRATEGY SETTINGS")
-    user_sentiment = st.radio("Market Sentiment:", ["BULLISH", "BEARISH"])
-    selected_sector = st.selectbox("Select Top Sector:", list(FNO_SECTORS.keys()), index=0)
+    user_sentiment = st.radio("Market Sentiment (Select manually):", ["BULLISH", "BEARISH"])
+    selected_sector = st.selectbox("Select Watchlist:", list(FNO_SECTORS.keys()), index=0)
     st.divider()
     
     st.markdown("### ⏱️ AUTO REFRESH")
@@ -195,7 +217,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# --- ৬. টপ নেভিগেশন ---
+# --- ৬. টপ নেভিগেশন (New Chart Icon) ---
 curr_time = datetime.datetime.now()
 t_915 = curr_time.replace(hour=9, minute=15, second=0)
 t_1530 = curr_time.replace(hour=15, minute=30, second=0)
@@ -212,9 +234,10 @@ else:
 
 live_news = get_market_news()
 
+# 🚨 🚀-এর বদলে 📊 আইকন বসানো হয়েছে
 st.markdown(f"""
     <div class="top-nav">
-        <div style="color:#00ffd0; font-weight:bold; font-size:20px; letter-spacing:1px;">🚀 HARIDAS NSE TERMINAL</div>
+        <div style="color:#00ffd0; font-weight:bold; font-size:20px; letter-spacing:1px;">📊 HARIDAS NSE TERMINAL</div>
         <div style="font-size: 14px; color: #ffeb3b; font-weight: bold; display: flex; align-items: center;">
             <span style="background: {session_color}; color: white; padding: 3px 10px; border-radius: 4px; margin-right: 15px;">{session}</span> 
             🕒 {curr_time.strftime('%H:%M:%S')}
@@ -226,7 +249,7 @@ st.markdown(f"""
     </div>
     <div class="ticker">
         <marquee direction="left" scrollamount="5">
-            {live_news}
+            📰 <b>LATEST:</b> {live_news}
         </marquee>
     </div>
 """, unsafe_allow_html=True)
@@ -235,12 +258,13 @@ st.markdown(f"""
 # 🚨 PAGE ROUTING LOGIC
 # ==========================================
 
+current_watchlist = FNO_SECTORS[selected_sector]
+
 if page_selection == "📈 MAIN TERMINAL":
     col1, col2, col3 = st.columns([1, 2.8, 1])
 
     with col1:
         st.markdown('<div class="section-title">📊 SECTOR PERFORMANCE</div>', unsafe_allow_html=True)
-        # 🚨 ১১টি সেক্টরের ফুল লিস্ট অ্যাড করা হলো 🚨
         sectors = [
             ("NIFTY METAL", "+1.57%", 95), ("NIFTY ENERGY", "+1.20%", 80),
             ("NIFTY FMCG", "+0.72%", 70), ("NIFTY FIN SRV", "+0.70%", 65),
@@ -275,12 +299,14 @@ if page_selection == "📈 MAIN TERMINAL":
         indices_html += '</div>'
         st.markdown(indices_html, unsafe_allow_html=True)
 
-        adv = 1650 if user_sentiment == "BULLISH" else 450
-        dec = 450 if user_sentiment == "BULLISH" else 1650
-        adv_pct = (adv / (adv + dec)) * 100
+        # 🚨 রিয়েল Advance/Decline (ডাইনামিক ক্যালকুলেশন) 🚨
+        with st.spinner("Calculating Adv/Dec for selected sector..."):
+            adv, dec = get_adv_dec(current_watchlist)
+            adv_pct = (adv / (adv + dec)) * 100
+            
         st.markdown(f"""
             <div class="adv-dec-container">
-                <div style="font-size:12px; font-weight:bold; color:#003366;">📊 9:25 AM NIFTY 50 MOVEMENT (SENTIMENT: {user_sentiment})</div>
+                <div style="font-size:12px; font-weight:bold; color:#003366;">📊 REAL-TIME ADVANCE / DECLINE ({selected_sector})</div>
                 <div class="adv-dec-bar">
                     <div class="bar-green" style="width: {adv_pct}%;"></div>
                     <div class="bar-red" style="width: {100-adv_pct}%;"></div>
@@ -288,13 +314,13 @@ if page_selection == "📈 MAIN TERMINAL":
                 <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:bold;">
                     <span style="color:green;">Advances: {adv}</span><span style="color:red;">Declines: {dec}</span>
                 </div>
+                <div style="font-size:10px; color:#555; margin-top:5px;">Strategy Sentiment selected: <b>{user_sentiment}</b> (Looking for opposite color candles)</div>
             </div>
         """, unsafe_allow_html=True)
 
         st.markdown(f'<div class="section-title">🎯 LIVE SIGNALS FOR: {selected_sector}</div>', unsafe_allow_html=True)
-        current_watchlist = FNO_SECTORS[selected_sector]
         
-        with st.spinner(f'Scanning F&O Charts...'):
+        with st.spinner(f'Scanning F&O Charts for Opposite Color + Lowest Vol...'):
             live_signals = exhaustion_scanner(current_watchlist, market_sentiment=user_sentiment)
         
         df_export = pd.DataFrame(live_signals) if len(live_signals) > 0 else pd.DataFrame(columns=["Status"])
@@ -323,7 +349,6 @@ if page_selection == "📈 MAIN TERMINAL":
         """, unsafe_allow_html=True)
 
     with col3:
-        # 🚨 ডাইনামিক ডেটা ফেস করা হচ্ছে 🚨
         with st.spinner("Fetching Live Market Movers..."):
             gainers, losers, trends = get_dynamic_market_data(current_watchlist)
 
@@ -355,7 +380,7 @@ if page_selection == "📈 MAIN TERMINAL":
             t_html += '</table></div>'
             st.markdown(t_html, unsafe_allow_html=True)
         else:
-            st.markdown("<p style='font-size:12px;text-align:center; color:#888;'>No stock with 3 consecutive days of trend found in watchlist.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='font-size:12px;text-align:center; color:#888;'>No stock with 3 consecutive days of trend found.</p>", unsafe_allow_html=True)
 
 elif page_selection == "🌅 9:10 AM: Pre-Market Gap":
     st.header("🌅 09:10 AM: Pre-Market 3% Gap Up/Down List")
@@ -373,7 +398,7 @@ elif page_selection == "🔥 9:20 AM: OI Setup":
 
 elif page_selection == "⚙️ Scanner Settings":
     st.header("⚙️ Scanner Settings")
-    st.success("Your terminal is fully customized to Haridas Master Strategy v40.4")
+    st.success("Your terminal is fully customized to Haridas Master Strategy v40.5")
 
 if auto_refresh:
     time.sleep(refresh_time * 60)
