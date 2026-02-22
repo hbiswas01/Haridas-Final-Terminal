@@ -24,13 +24,23 @@ FNO_SECTORS = {
     "NIFTY PSU BANK": ["SBIN.NS", "PNB.NS", "BOB.NS", "CANBK.NS"]
 }
 
+# 🚨 নতুন: পুরো Nifty 50 লিস্ট (Adv/Dec ট্র‍্যাক করার জন্য) 🚨
+NIFTY_50_STOCKS = [
+    "ADANIENT.NS", "ADANIPORTS.NS", "APOLLOHOSP.NS", "ASIANPAINT.NS", "AXISBANK.NS", "BAJAJ-AUTO.NS", "BAJFINANCE.NS", 
+    "BAJAJFINSV.NS", "BPCL.NS", "BHARTIARTL.NS", "BRITANNIA.NS", "CIPLA.NS", "COALINDIA.NS", "DIVISLAB.NS", "DRREDDY.NS", 
+    "EICHERMOT.NS", "GRASIM.NS", "HCLTECH.NS", "HDFCBANK.NS", "HDFCLIFE.NS", "HEROMOTOCO.NS", "HINDALCO.NS", "HINDUNILVR.NS", 
+    "ICICIBANK.NS", "ITC.NS", "INDUSINDBK.NS", "INFY.NS", "JSWSTEEL.NS", "KOTAKBANK.NS", "LT.NS", "LTIM.NS", "M&M.NS", 
+    "MARUTI.NS", "NTPC.NS", "NESTLEIND.NS", "ONGC.NS", "POWERGRID.NS", "RELIANCE.NS", "SBILIFE.NS", "SBIN.NS", "SUNPHARMA.NS", 
+    "TCS.NS", "TATACONSUM.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "TECHM.NS", "TITAN.NS", "UPL.NS", "ULTRACEMCO.NS", "WIPRO.NS"
+]
+
 ALL_STOCKS = list(set([stock for slist in FNO_SECTORS.values() for stock in slist]))
 
 @st.cache_data(ttl=30)
 def get_live_data(ticker_symbol):
     try:
         stock = yf.Ticker(ticker_symbol)
-        df = stock.history(period='5d') # উইকেন্ডের জন্য 5 দিনের ডেটা 
+        df = stock.history(period='5d') 
         if not df.empty:
             ltp = df['Close'].iloc[-1]
             try: prev_close = stock.fast_info.previous_close
@@ -72,6 +82,7 @@ def get_real_sector_performance():
         results.append({"Sector": sector, "Pct": avg_pct, "Width": max(bw, 5)})
     return sorted(results, key=lambda x: x['Pct'], reverse=True)
 
+# 🚨 আপডেট: এখন এই ইঞ্জিনটা সবসময় Nifty 50 লিস্ট ব্যবহার করবে 🚨
 @st.cache_data(ttl=60)
 def get_adv_dec(stock_list):
     adv, dec = 0, 0
@@ -79,7 +90,7 @@ def get_adv_dec(stock_list):
         _, change, _ = get_live_data(ticker)
         if change >= 0: adv += 1
         else: dec += 1
-    if adv == 0 and dec == 0: return 1, 1 
+    if adv == 0 and dec == 0: return 25, 25 
     return adv, dec
 
 @st.cache_data(ttl=120)
@@ -204,15 +215,12 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
         except: continue
     return signals
 
-# --- ৪. রেসপনসিভ CSS (100% Safely Written) ---
+# --- ৪. রেসপনসিভ CSS ---
 st.markdown("""
     <style>
-    /* header display block রাখা হলো যাতে সাইডবার বাটন না হারায় */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
     .stApp { background-color: #f0f4f8; font-family: 'Segoe UI', sans-serif; }
-    
     .block-container { padding-top: 4rem !important; padding-bottom: 1rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
     
     .top-nav { background-color: #002b36; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; margin-bottom: 10px; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); }
@@ -312,7 +320,6 @@ if page_selection == "📈 MAIN TERMINAL":
         with st.spinner("Fetching..."):
             real_sectors = get_real_sector_performance()
         
-        # Fallback if weekend data fails
         if not real_sectors:
             real_sectors = [{"Sector": "NIFTY METAL", "Pct": 1.57, "Width": 80}, {"Sector": "NIFTY BANK", "Pct": 0.58, "Width": 50}, {"Sector": "NIFTY IT", "Pct": -0.81, "Width": 75}]
             
@@ -342,121 +349,17 @@ if page_selection == "📈 MAIN TERMINAL":
         indices_html += """</div>"""
         st.markdown(indices_html, unsafe_allow_html=True)
 
-        adv, dec = get_adv_dec(current_watchlist)
-        adv_pct = (adv / (adv + dec)) * 100
+        # 🚨 ইঞ্জিন এখন পুরো Nifty 50 স্ক্যান করবে 🚨
+        with st.spinner("Calculating Nifty 50 Adv/Dec..."):
+            adv, dec = get_adv_dec(NIFTY_50_STOCKS)
+        adv_pct = (adv / (adv + dec)) * 100 if (adv + dec) > 0 else 50
+        
         st.markdown(f"""
             <div class="adv-dec-container">
-                <div style="font-size:12px; font-weight:bold; color:#003366;">📊 REAL-TIME ADVANCE / DECLINE ({selected_sector})</div>
+                <div style="font-size:12px; font-weight:bold; color:#003366;">📊 REAL-TIME ADVANCE / DECLINE (NIFTY 50)</div>
                 <div class="adv-dec-bar">
                     <div class="bar-green" style="width: {adv_pct}%;"></div>
                     <div class="bar-red" style="width: {100-adv_pct}%;"></div>
                 </div>
                 <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:bold;">
-                    <span style="color:green;">Advances: {adv}</span><span style="color:red;">Declines: {dec}</span>
-                </div>
-                <div style="font-size:10px; color:#555; margin-top:5px;">Strategy Sentiment: <b>{user_sentiment}</b></div>
-            </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown(f'<div class="section-title">🎯 LIVE SIGNALS FOR: {selected_sector}</div>', unsafe_allow_html=True)
-        with st.spinner(f'Scanning F&O Charts for Opposite Color + Lowest Vol...'):
-            live_signals = exhaustion_scanner(current_watchlist, market_sentiment=user_sentiment)
-        
-        df_export = pd.DataFrame(live_signals) if len(live_signals) > 0 else pd.DataFrame(columns=["Status"])
-        csv = df_export.to_csv(index=False).encode('utf-8')
-        st.download_button(label=f"📥 Download to Excel (CSV)", data=csv, file_name=f"Haridas_Signals_{curr_time.strftime('%H%M')}.csv", mime="text/csv")
-        
-        if len(live_signals) > 0:
-            sig_html = """<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>T1</th><th>T2(1:3)</th><th>EMA 10</th><th>Action Guide</th><th>Time</th></tr>"""
-            for _, row in df_export.iterrows():
-                sig_clr = "green" if row["Signal"] == "BUY" else "red"
-                sig_html += f"""<tr><td style="color:{sig_clr}; font-weight:bold;">{row["Stock"]}</td><td>{row["Entry"]}</td><td>{row["LTP"]}</td><td style="color:white; background:{sig_clr}; font-weight:bold;">{row["Signal"]}</td><td>{row["SL"]}</td><td style="font-weight:bold;">{row["T1"]}</td><td style="font-weight:bold;">{row["T2(1:3)"]}</td><td style="color:#1a73e8; font-weight:bold;">{row["EMA 10"]}</td><td style="color:#856404; background:#fff3cd; font-weight:bold;">{row["Action"]}</td><td>{row["Time"]}</td></tr>"""
-            sig_html += """</table></div>"""
-            st.markdown(sig_html, unsafe_allow_html=True)
-        else:
-            st.info(f"⏳ Waiting for setup... No opposite color + lowest vol candle found yet.")
-
-        st.markdown('<div class="section-title">📝 AUTO-BACKTESTING & TRADE JOURNAL (CLOSED)</div>', unsafe_allow_html=True)
-        st.markdown("""
-            <div class="table-container">
-            <table class="v38-table">
-                <tr><th>Entry Time</th><th>Stock</th><th>Entry Px</th><th>SL</th><th>Target Hit</th><th>Status</th><th>Amount (₹)</th></tr>
-                <tr><td colspan="7" style="color:#888; padding:15px;">Waiting for trades to close today...</td></tr>
-            </table>
-            </div>
-        """, unsafe_allow_html=True)
-
-    with col3:
-        with st.spinner("Fetching Live Market Movers..."):
-            gainers, losers, trends = get_dynamic_market_data(current_watchlist)
-
-        st.markdown('<div class="section-title">🚀 LIVE TOP GAINERS</div>', unsafe_allow_html=True)
-        if gainers:
-            g_html = """<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>%</th></tr>"""
-            for g in gainers: g_html += f"""<tr><td style="text-align:left; font-weight:bold; color:#003366;">{g["Stock"]}</td><td>{g["LTP"]}</td><td style="color:green; font-weight:bold;">+{g["Pct"]}%</td></tr>"""
-            g_html += """</table></div>"""
-            st.markdown(g_html, unsafe_allow_html=True)
-        else: st.markdown("<p style='font-size:12px;text-align:center;'>No gainers found.</p>", unsafe_allow_html=True)
-
-        st.markdown('<div class="section-title">🔻 LIVE TOP LOSERS</div>', unsafe_allow_html=True)
-        if losers:
-            l_html = """<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>%</th></tr>"""
-            for l in losers: l_html += f"""<tr><td style="text-align:left; font-weight:bold; color:#003366;">{l["Stock"]}</td><td>{l["LTP"]}</td><td style="color:red; font-weight:bold;">{l["Pct"]}%</td></tr>"""
-            l_html += """</table></div>"""
-            st.markdown(l_html, unsafe_allow_html=True)
-        else: st.markdown("<p style='font-size:12px;text-align:center;'>No losers found.</p>", unsafe_allow_html=True)
-
-        st.markdown('<div class="section-title">🔍 TREND CONTINUITY (3+ Days)</div>', unsafe_allow_html=True)
-        if trends:
-            t_html = """<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Status</th></tr>"""
-            for t in trends: t_html += f"""<tr><td style="text-align:left; font-weight:bold; color:#003366;">{t["Stock"]}</td><td style="color:{t["Color"]}; font-weight:bold;">{t["Status"]}</td></tr>"""
-            t_html += """</table></div>"""
-            st.markdown(t_html, unsafe_allow_html=True)
-        else: st.markdown("<p style='font-size:12px;text-align:center; color:#888;'>No stock with 3 consecutive days of trend found.</p>", unsafe_allow_html=True)
-
-elif page_selection == "🌅 9:10 AM: Pre-Market Gap":
-    st.header("🌅 09:10 AM: Pre-Market 3% Gap Up/Down List")
-    with st.spinner("Scanning ALL F&O Stocks..."):
-        gaps = get_gap_scans(ALL_STOCKS)
-    if gaps:
-        gap_html = """<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Open Px</th><th>Gap %</th><th>Status</th></tr>"""
-        for g in gaps: gap_html += f"""<tr><td style="font-weight:bold;">{g["Stock"]}</td><td>{g["Open"]}</td><td style="color:{g["Color"]}; font-weight:bold;">{g["Pct"]}%</td><td>{g["Status"]}</td></tr>"""
-        gap_html += """</table></div>"""
-        st.markdown(gap_html, unsafe_allow_html=True)
-    else: st.info("No stocks gapped > 3% recently.")
-
-elif page_selection == "🚀 9:15 AM: Opening Movers":
-    st.header("🚀 09:15 AM: Live >2% Movers")
-    with st.spinner("Scanning ALL F&O Stocks..."):
-        movers = get_opening_movers(ALL_STOCKS)
-    if movers:
-        m_html = """<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>Movement %</th></tr>"""
-        for m in movers: 
-            c = "green" if m["Pct"] > 0 else "red"
-            m_html += f"""<tr><td style="font-weight:bold;">{m["Stock"]}</td><td>{m["LTP"]}</td><td style="color:{c}; font-weight:bold;">{m["Pct"]}%</td></tr>"""
-        m_html += """</table></div>"""
-        st.markdown(m_html, unsafe_allow_html=True)
-    else: st.info("No stocks moved > 2% recently.")
-
-elif page_selection == "🔥 9:20 AM: OI Setup":
-    st.header("🔥 09:20 AM: Volume Spikes (Proxy OI)")
-    with st.spinner("Scanning ALL F&O Stocks..."):
-        oi_setups = get_oi_simulation(ALL_STOCKS)
-    if oi_setups:
-        oi_html = """<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Simulated OI Signal</th><th>Vol Spike</th></tr>"""
-        for o in oi_setups: oi_html += f"""<tr><td style="font-weight:bold;">{o["Stock"]}</td><td style="color:{o["Color"]}; font-weight:bold;">{o["Signal"]}</td><td>{o["Vol"]}</td></tr>"""
-        oi_html += """</table></div>"""
-        st.markdown(oi_html, unsafe_allow_html=True)
-    else: st.info("No significant volume spikes detected.")
-
-elif page_selection == "⚙️ Scanner Settings":
-    st.header("⚙️ Scanner Settings")
-    st.success("Your terminal is fully dynamic and customized to Haridas Master Strategy v40.9")
-
-elif page_selection == "📊 Backtest Engine":
-    st.header("📊 Backtest Engine")
-    st.warning("Historical data sync required for automated backtesting.")
-
-if auto_refresh:
-    time.sleep(refresh_time * 60)
-    st.rerun()
+                    <span style="color:green;">Advances: {adv}</span><span style="color:red;">Declines: {dec}
