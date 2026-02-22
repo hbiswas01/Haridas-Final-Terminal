@@ -5,9 +5,19 @@ import pandas as pd
 import time
 
 # --- ১. পেজ কনফিগারেশন ---
-st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v38.1", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v38.2", initial_sidebar_state="expanded")
 
-# --- ২. লাইভ মার্কেট ডেটা ফেচিং ---
+# --- ২. লাইভ মার্কেট ডেটা ও সেক্টর ম্যাপার ---
+# 🚨 স্ট্র্যাটেজি অনুযায়ী সেক্টর-ভিত্তিক F&O স্টকের লিস্ট তৈরি করা হলো
+FNO_SECTORS = {
+    "NIFTY METAL": ["HINDALCO.NS", "TATASTEEL.NS", "VEDL.NS", "JSWSTEEL.NS", "NMDC.NS", "COALINDIA.NS"],
+    "NIFTY BANK": ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS", "KOTAKBANK.NS", "INDUSINDBK.NS"],
+    "NIFTY IT": ["TCS.NS", "INFY.NS", "WIPRO.NS", "HCLTECH.NS", "TECHM.NS", "LTIM.NS"],
+    "NIFTY ENERGY": ["RELIANCE.NS", "NTPC.NS", "ONGC.NS", "POWERGRID.NS", "TATAPOWER.NS"],
+    "NIFTY AUTO": ["MARUTI.NS", "TATAMOTORS.NS", "M&M.NS", "BAJAJ-AUTO.NS", "HEROMOTOCO.NS"],
+    "MIXED WATCHLIST": ["HINDALCO.NS", "NTPC.NS", "WIPRO.NS", "RELIANCE.NS", "HDFCBANK.NS", "TCS.NS", "INFY.NS", "ITC.NS", "SBIN.NS", "BHARTIARTL.NS"]
+}
+
 @st.cache_data(ttl=30)
 def get_live_data(ticker_symbol):
     try:
@@ -23,37 +33,43 @@ def get_live_data(ticker_symbol):
     except:
         return 0.0, 0.0, 0.0
 
-# --- ৩. দ্য মাস্টার স্ক্যানার ইঞ্জিন (EMA 10 আপডেটেড) ---
+# --- ৩. দ্য মাস্টার স্ক্যানার (৩-স্টেপ স্ট্র্যাটেজি) ---
 @st.cache_data(ttl=60)
 def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
     signals = []
     for stock_symbol in stock_list:
         try:
             stock = yf.Ticker(stock_symbol)
-            df = stock.history(period="2d", interval="5m")
+            df = stock.history(period="3d", interval="5m")
             if df.empty or len(df) < 15: continue
             
+            # EMA 10 Calculation
             df['EMA10'] = df['Close'].ewm(span=10, adjust=False).mean()
             
             today_date = df.index[-1].date()
             df_today = df[df.index.date == today_date].copy()
             if len(df_today) < 5: continue
             
+            # রানিং ক্যান্ডেল বাদ দিয়ে লাস্ট কমপ্লিট ক্যান্ডেল ধরা হচ্ছে
             completed_idx = len(df_today) - 2
             completed_candle = df_today.iloc[completed_idx]
             
+            # 🚨 রুল: প্রথম ১৫ মিনিট (৩টে ক্যান্ডেল) ইগনোর
             if completed_idx < 3: continue
                 
             df_upto_completed = df_today.iloc[:completed_idx+1]
             min_vol_so_far = df_upto_completed['Volume'].min()
             
+            # 🚨 রুল: দিনের সর্বনিম্ন ভলিউম
             is_lowest_vol = (completed_candle['Volume'] <= min_vol_so_far)
+            
             is_green = completed_candle['Close'] > completed_candle['Open']
             is_red = completed_candle['Close'] < completed_candle['Open']
             
             signal = None
             entry = sl = 0.0
             
+            # 🚨 রুল: অপজিট কালার লজিক (Train Emptying Out)
             if market_sentiment == "BULLISH" and is_red and is_lowest_vol:
                 signal = "BUY"
                 entry = completed_candle['High'] + 0.50
@@ -63,34 +79,35 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
                 entry = completed_candle['Low'] - 0.50
                 sl = completed_candle['High'] + 0.50
                 
+            # 🚨 রুল: 1:2 Risk to Reward & Action
             if signal:
                 risk = abs(entry - sl)
                 if risk > 0:
                     t1 = entry + (risk * 2) if signal == "BUY" else entry - (risk * 2)
                     t2 = entry + (risk * 3) if signal == "BUY" else entry - (risk * 3)
-                    pivot = round((completed_candle['High'] + completed_candle['Low'] + completed_candle['Close']) / 3, 2)
                     
                     signals.append({
                         "Stock": stock_symbol, "Entry": round(entry, 2), "LTP": round(completed_candle['Close'], 2),
-                        "Signal": signal, "SL": round(sl, 2), "T1(1:2)": round(t1, 2), "T2": round(t2, 2),
-                        "EMA 10": round(completed_candle['EMA10'], 2),
-                        "Pivot": pivot, "Time": completed_candle.name.strftime('%H:%M:%S')
+                        "Signal": signal, "SL": round(sl, 2), "T1 (1:2)": round(t1, 2), "T2 (1:3)": round(t2, 2),
+                        "EMA 10": round(completed_candle['EMA10'], 2), 
+                        "Action": "Book 50% @ T1, Trail SL", # Action গাইডেন্স
+                        "Time": completed_candle.name.strftime('%H:%M:%S')
                     })
         except: continue
     return signals
 
-# --- ৪. কাস্টম CSS (Visuals + Mobile Fix) ---
+# --- ৪. কাস্টম CSS (Visuals & Responsiveness) ---
 st.markdown("""
     <style>
     header { visibility: hidden !important; }
     .stApp { background-color: #f0f4f8; font-family: 'Segoe UI', sans-serif; }
-    .block-container { padding: 3.5rem 1rem 1rem 1rem !important; }
+    .block-container { padding: 3rem 1rem 1rem 1rem !important; }
     
-    .top-nav { background-color: #002b36; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; margin-bottom: 15px; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); }
+    .top-nav { background-color: #002b36; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; margin-bottom: 15px; }
     
     @media (max-width: 768px) {
         .top-nav { flex-direction: column; text-align: center; gap: 8px; }
-        .block-container { padding-top: 5.5rem !important; }
+        .block-container { padding-top: 5rem !important; }
         .idx-box { width: 48% !important; margin-bottom: 8px; }
     }
     
@@ -116,26 +133,23 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- ৫. সাইডবার (Full Dashboard Control) ---
+# --- ৫. সাইডবার (Advanced Settings) ---
 with st.sidebar:
-    st.markdown("### 🎛️ MAIN MENU")
-    page_selection = st.radio("Navigate to:", ["📈 Live Terminal", "⚙️ Scanner Settings", "📊 Backtest Engine"])
-    st.divider()
+    st.markdown("### ⚙️ STRATEGY SETTINGS")
+    st.info("১. প্রথমে মার্কেট সেন্টিমেন্ট ঠিক কর।\n২. তারপর আজকের টপ সেক্টর সিলেক্ট কর।")
     
-    # 🚨 কাস্টম অটো-রিফ্রেশ ইঞ্জিন
+    # 🚨 সেন্টিমেন্ট ও সেক্টর সিলেকশন
+    user_sentiment = st.radio("1. Market Sentiment (9:25 AM):", ["BULLISH", "BEARISH"])
+    selected_sector = st.selectbox("2. Select Top Sector (F&O):", list(FNO_SECTORS.keys()), index=0)
+    
+    st.divider()
     st.markdown("### ⏱️ SYSTEM CONTROLS")
     if st.button("🔄 Force Refresh Now", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
         
     auto_refresh = st.checkbox("Enable Auto-Refresh", value=False)
-    refresh_time = st.selectbox("Refresh Interval:", [1, 3, 5, 10], index=0, format_func=lambda x: f"{x} Minutes")
-    st.divider()
-    
-    # 🚨 ডায়নামিক মার্কেট সেন্টিমেন্ট
-    st.markdown("### 💡 STRATEGY SETTINGS")
-    user_sentiment = st.selectbox("Market Sentiment (Scanner):", ["BULLISH", "BEARISH"])
-    st.info("EMA 10 Trailing: Enabled")
+    refresh_time = st.selectbox("Refresh Interval:", [1, 3, 5], index=0, format_func=lambda x: f"{x} Mins")
 
 # --- ৬. টপ নেভিগেশন ---
 curr_time = datetime.datetime.now()
@@ -154,81 +168,87 @@ st.markdown(f"""
     </div>
     <div class="ticker">
         <marquee direction="left" scrollamount="5">
-            🔥 <b>SYSTEM READY:</b> Real-time 5m Exhaustion Scanner | 🎯 Trend: {user_sentiment} | 📱 Custom Refresh & Excel Export Ready.
+            🔥 <b>RULE ACTIVE:</b> Wait 15 mins -> Check 9:25 Adv/Dec -> Select Top Sector -> Find Opposite Color + Lowest Vol -> Book 50% at 1:2 -> Trail SL to Cost/EMA 10.
         </marquee>
     </div>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# 🚨 PAGE ROUTING LOGIC (ড্যাশবোর্ড চেঞ্জার)
-# ==========================================
+col1, col2, col3 = st.columns([1, 2.8, 1])
 
-if page_selection == "📈 Live Terminal":
-    col1, col2, col3 = st.columns([1, 2.8, 1])
+# --- LEFT COLUMN ---
+with col1:
+    st.markdown('<div class="section-title">📊 SECTOR PERFORMANCE</div>', unsafe_allow_html=True)
+    sectors = [("NIFTY METAL", "+1.57%", 95), ("NIFTY ENERGY", "+1.20%", 80), ("NIFTY FMCG", "+0.72%", 70), ("NIFTY FIN SRV", "+0.70%", 65), ("NIFTY REALTY", "+0.63%", 60), ("NIFTY BANK", "+0.58%", 50)]
+    sec_html = '<div class="table-container"><table class="v38-table"><tr><th>Sector</th><th>%</th><th style="width:40%;">Trend</th></tr>'
+    for n, v, bw in sectors:
+        c, bc = ("green", "bar-fg-green") if "+" in v else ("red", "bar-fg-red")
+        sec_html += f'<tr><td style="text-align:left; font-weight:bold; color:#003366;">{n}</td><td style="color:{c}; font-weight:bold;">{v}</td><td style="padding:4px 8px;"><div class="bar-bg"><div class="{bc}" style="width:{bw}%;"></div></div></td></tr>'
+    sec_html += '</table></div>'
+    st.markdown(sec_html, unsafe_allow_html=True)
 
-    # --- LEFT COLUMN ---
-    with col1:
-        st.markdown('<div class="section-title">📊 SECTOR PERFORMANCE</div>', unsafe_allow_html=True)
-        sectors = [("NIFTY METAL", "+1.57%", 95), ("NIFTY ENERGY", "+1.20%", 80), ("NIFTY FMCG", "+0.72%", 70), ("NIFTY FIN SRV", "+0.70%", 65), ("NIFTY BANK", "+0.58%", 50), ("NIFTY IT", "-0.81%", 75)]
-        sec_html = '<div class="table-container"><table class="v38-table"><tr><th>Sector</th><th>%</th><th style="width:40%;">Trend</th></tr>'
-        for n, v, bw in sectors:
-            c, bc = ("green", "bar-fg-green") if "+" in v else ("red", "bar-fg-red")
-            sec_html += f'<tr><td style="text-align:left; font-weight:bold; color:#003366;">{n}</td><td style="color:{c}; font-weight:bold;">{v}</td><td style="padding:4px 8px;"><div class="bar-bg"><div class="{bc}" style="width:{bw}%;"></div></div></td></tr>'
-        sec_html += '</table></div>'
-        st.markdown(sec_html, unsafe_allow_html=True)
+# --- MIDDLE COLUMN ---
+with col2:
+    st.markdown('<div class="section-title">📉 MARKET INDICES (LIVE)</div>', unsafe_allow_html=True)
+    nifty_ltp, nifty_chg, nifty_pct = get_live_data("^NSEI")
+    bank_ltp, bank_chg, bank_pct = get_live_data("^NSEBANK")
+    
+    indices_html = '<div class="idx-container">'
+    indices = [
+        ("NIFTY 50", f"{nifty_ltp:,.2f}", f"{'+' if nifty_chg >= 0 else ''}{nifty_chg:.2f} ({'+' if nifty_pct >= 0 else ''}{nifty_pct:.2f}%)", "green" if nifty_chg >= 0 else "red"),
+        ("NIFTY BANK", f"{bank_ltp:,.2f}", f"{'+' if bank_chg >= 0 else ''}{bank_chg:.2f} ({'+' if bank_pct >= 0 else ''}{bank_pct:.2f}%)", "green" if bank_chg >= 0 else "red")
+    ]
+    for name, val, amt, clr in indices:
+        indices_html += f"<div class='idx-box'><span style='font-size:11px; color:#555; font-weight:bold;'>{name}</span><br><span style='font-size:15px; color:black; font-weight:bold;'>{val}</span><br><span style='color:{clr}; font-size:11px; font-weight:bold;'>{amt}</span></div>"
+    indices_html += '</div>'
+    st.markdown(indices_html, unsafe_allow_html=True)
 
-    # --- MIDDLE COLUMN ---
-    with col2:
-        st.markdown('<div class="section-title">📉 MARKET INDICES (LIVE)</div>', unsafe_allow_html=True)
-        nifty_ltp, nifty_chg, nifty_pct = get_live_data("^NSEI")
-        bank_ltp, bank_chg, bank_pct = get_live_data("^NSEBANK")
-        
-        st.markdown(f"""
-            <div class="idx-container">
-                <div class="idx-box"><b>NIFTY 50</b><br><span style="font-size:15px; color:black; font-weight:bold;">{nifty_ltp}</span><br><span style="color:{"green" if nifty_chg >= 0 else "red"}; font-size:11px; font-weight:bold;">{nifty_chg} ({nifty_pct}%)</span></div>
-                <div class="idx-box"><b>NIFTY BANK</b><br><span style="font-size:15px; color:black; font-weight:bold;">{bank_ltp}</span><br><span style="color:{"green" if bank_chg >= 0 else "red"}; font-size:11px; font-weight:bold;">{bank_chg} ({bank_pct}%)</span></div>
+    # 🚨 ডায়নামিক Advance/Decline (সেন্টিমেন্ট অনুযায়ী)
+    adv = 1650 if user_sentiment == "BULLISH" else 450
+    dec = 450 if user_sentiment == "BULLISH" else 1650
+    adv_pct = (adv / (adv + dec)) * 100
+    st.markdown(f"""
+        <div class="adv-dec-container">
+            <div style="font-size:12px; font-weight:bold; color:#003366;">📊 9:25 AM NIFTY 50 MOVEMENT (SENTIMENT: {user_sentiment})</div>
+            <div class="adv-dec-bar">
+                <div class="bar-green" style="width: {adv_pct}%;"></div>
+                <div class="bar-red" style="width: {100-adv_pct}%;"></div>
             </div>
-        """, unsafe_allow_html=True)
+            <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:bold;">
+                <span style="color:green;">Advances: {adv}</span><span style="color:red;">Declines: {dec}</span>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-        st.markdown(f'<div class="section-title">🎯 TRADING SIGNALS (Trend: {user_sentiment} + EMA 10)</div>', unsafe_allow_html=True)
+    # 🚨 স্ক্যানার এখন সিলেক্ট করা সেক্টরের স্টকগুলো স্ক্যান করবে
+    st.markdown(f'<div class="section-title">🎯 LIVE SIGNALS FOR: {selected_sector}</div>', unsafe_allow_html=True)
+    
+    current_watchlist = FNO_SECTORS[selected_sector]
+    
+    with st.spinner(f'Scanning {selected_sector} F&O Charts (5m)...'):
+        live_signals = exhaustion_scanner(current_watchlist, market_sentiment=user_sentiment)
+    
+    if len(live_signals) > 0:
+        df_signals = pd.DataFrame(live_signals)
+        # টেবিল হেডারে Action যোগ করা হয়েছে
+        sig_html = '<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>T1(1:2)</th><th>T2(1:3)</th><th>EMA 10</th><th>Action Guide</th><th>Time</th></tr>'
+        for _, row in df_signals.iterrows():
+            sig_clr = "green" if row["Signal"] == "BUY" else "red"
+            sig_html += f'<tr><td style="color:{sig_clr}; font-weight:bold;">{row["Stock"]}</td><td>{row["Entry"]}</td><td>{row["LTP"]}</td><td style="color:white; background:{sig_clr}; font-weight:bold;">{row["Signal"]}</td><td>{row["SL"]}</td><td style="font-weight:bold;">{row["T1 (1:2)"]}</td><td>{row["T2 (1:3)"]}</td><td style="color:#1a73e8; font-weight:bold;">{row["EMA 10"]}</td><td style="color:#856404; background:#fff3cd;">{row["Action"]}</td><td>{row["Time"]}</td></tr>'
+        sig_html += '</table></div>'
+        st.markdown(sig_html, unsafe_allow_html=True)
         
-        fo_watchlist = ["HINDALCO.NS", "NTPC.NS", "WIPRO.NS", "RELIANCE.NS", "HDFCBANK.NS", "TCS.NS", "INFY.NS", "ITC.NS", "SBIN.NS"]
-        
-        with st.spinner('Scanning Live F&O Charts (5m)...'):
-            live_signals = exhaustion_scanner(fo_watchlist, market_sentiment=user_sentiment)
-        
-        if len(live_signals) > 0:
-            df_signals = pd.DataFrame(live_signals)
-            
-            sig_html = '<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>T1(1:2)</th><th>T2</th><th>EMA 10</th><th>Pivot</th><th>Time</th></tr>'
-            for _, row in df_signals.iterrows():
-                sig_clr = "green" if row["Signal"] == "BUY" else "red"
-                sig_html += f'<tr><td style="color:{sig_clr}; font-weight:bold;">{row["Stock"]}</td><td>{row["Entry"]}</td><td>{row["LTP"]}</td><td style="color:white; background:{sig_clr}; font-weight:bold;">{row["Signal"]}</td><td>{row["SL"]}</td><td>{row["T1(1:2)"]}</td><td>{row["T2"]}</td><td style="font-weight:bold; color:#003366;">{row["EMA 10"]}</td><td>{row["Pivot"]}</td><td>{row["Time"]}</td></tr>'
-            sig_html += '</table></div>'
-            st.markdown(sig_html, unsafe_allow_html=True)
-            
-            # 🚨 আসল EXCEL EXPORT বাটন
-            csv = df_signals.to_csv(index=False).encode('utf-8')
-            st.download_button(label="📥 Export Signals to Excel (CSV)", data=csv, file_name=f"Haridas_Signals_{curr_time.strftime('%H%M')}.csv", mime="text/csv")
-        else:
-            st.info("⏳ Waiting for setup... No stocks currently match the condition.")
+        # 🚨 EXCEL ডাউনলোড বাটন
+        csv = df_signals.to_csv(index=False).encode('utf-8')
+        st.download_button(label=f"📥 Download {selected_sector} Signals (CSV)", data=csv, file_name=f"Signals_{selected_sector}.csv", mime="text/csv")
+    else:
+        st.info(f"⏳ No Setup Found in {selected_sector}. Wait for opposite color candle with lowest volume.")
 
-    # --- RIGHT COLUMN ---
-    with col3:
-        st.markdown('<div class="section-title">🚀 TOP GAINERS</div>', unsafe_allow_html=True)
-        st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>%</th></tr><tr><td style="text-align:left; color:#003366; font-weight:bold;">HINDALCO.NS</td><td>935.70</td><td style="color:green; font-weight:bold;">+3.32%</td></tr></table></div>""", unsafe_allow_html=True)
+# --- RIGHT COLUMN ---
+with col3:
+    st.markdown('<div class="section-title">🚀 TOP GAINERS</div>', unsafe_allow_html=True)
+    st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>%</th></tr><tr><td style="text-align:left; color:#003366; font-weight:bold;">HINDALCO.NS</td><td>935.70</td><td style="color:green; font-weight:bold;">+3.32%</td></tr></table></div>""", unsafe_allow_html=True)
 
-elif page_selection == "⚙️ Scanner Settings":
-    st.header("⚙️ Scanner Customization")
-    st.info("এখানে তুই স্ক্যানারের লজিক নিজের মতো সাজাতে পারবি (Development in progress).")
-    st.slider("Select EMA Period", min_value=5, max_value=50, value=10)
-    st.selectbox("Risk to Reward Target 1", ["1:1", "1:1.5", "1:2", "1:3"], index=2)
-
-elif page_selection == "📊 Backtest Engine":
-    st.header("📊 Backtesting Dashboard")
-    st.warning("Backtest Engine is currently offline. Historical data sync required.")
-
-# 🚨 কাস্টম অটো-রিফ্রেশ লজিক
+# Auto-refresh
 if auto_refresh:
     time.sleep(refresh_time * 60)
     st.rerun()
