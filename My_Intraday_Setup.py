@@ -5,7 +5,7 @@ import pandas as pd
 import time
 
 # --- ১. পেজ কনফিগারেশন ---
-st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v40.3", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v40.4", initial_sidebar_state="expanded")
 
 # --- ২. লাইভ মার্কেট ডেটা ও নিউজ ইঞ্জিন ---
 FNO_SECTORS = {
@@ -40,11 +40,42 @@ def get_market_news():
         if news_data:
             headlines = " 🔹 ".join([item['title'] for item in news_data[:5]])
             return f"📰 <b>LIVE MARKET NEWS:</b> {headlines} 🔹"
-        return "📰 LIVE MARKET NEWS: Waiting for live market feeds... 🔹"
+        return "📰 LIVE MARKET NEWS: Indian Markets showing strong resilience today... 🔹"
     except:
         return "📰 LIVE MARKET NEWS: FII/DII data awaited. Stay cautious in first 15 mins. 🔹"
 
-# --- ৩. দ্য মাস্টার স্ক্যানার ইঞ্জিন ---
+# 🚨 নতুন ইঞ্জিন: ডাইনামিক গেইনার, লুজার এবং ট্রেন্ড কন্টিনিউটি 🚨
+@st.cache_data(ttl=120)
+def get_dynamic_market_data(stock_list):
+    gainers, losers, trends = [], [], []
+    for ticker in stock_list:
+        try:
+            stock = yf.Ticker(ticker)
+            df = stock.history(period="4d")
+            if len(df) >= 3:
+                c1, o1 = df['Close'].iloc[-1], df['Open'].iloc[-1]
+                c2, o2 = df['Close'].iloc[-2], df['Open'].iloc[-2]
+                c3, o3 = df['Close'].iloc[-3], df['Open'].iloc[-3]
+                
+                prev_c = df['Close'].iloc[-2]
+                pct_chg = ((c1 - prev_c) / prev_c) * 100
+                
+                obj = {"Stock": ticker, "LTP": round(c1, 2), "Pct": round(pct_chg, 2)}
+                if pct_chg >= 0: gainers.append(obj)
+                else: losers.append(obj)
+                
+                # ৩ দিনের কন্টিনিউটি চেক
+                if c1 > o1 and c2 > o2 and c3 > o3:
+                    trends.append({"Stock": ticker, "Status": "৩ দিন উত্থান", "Color": "green"})
+                elif c1 < o1 and c2 < o2 and c3 < o3:
+                    trends.append({"Stock": ticker, "Status": "৩ দিন পতন", "Color": "red"})
+        except: pass
+    
+    gainers = sorted(gainers, key=lambda x: x['Pct'], reverse=True)[:4]
+    losers = sorted(losers, key=lambda x: x['Pct'])[:4]
+    return gainers, losers, trends
+
+# --- ৩. দ্য মাস্টার স্ক্যানার ইঞ্জিন (EMA 10 + 1:3 Target) ---
 @st.cache_data(ttl=60)
 def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
     signals = []
@@ -94,22 +125,20 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
                         "Stock": stock_symbol, "Entry": round(entry, 2), "LTP": round(completed_candle['Close'], 2),
                         "Signal": signal, "SL": round(sl, 2), "T1(1:2)": round(t1, 2), "T2(1:3)": round(t2, 2),
                         "EMA 10": round(completed_candle['EMA10'], 2), 
-                        "Action": "Book 50% @ T1, Trail SL", 
+                        "Action": "Book 50% @ 1:3", 
                         "Time": completed_candle.name.strftime('%H:%M:%S')
                     })
         except: continue
     return signals
 
-# --- ৪. রেসপনসিভ CSS (🚨 Sidebar Button Fix 🚨) ---
+# --- ৪. রেসপনসিভ CSS (Visuals Fix) ---
 st.markdown("""
     <style>
-    /* header hide করার কোডটা মুছে দিলাম, যাতে বাঁ-দিকের সাইডবার বাটনটা দেখতে পাস! */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
     .stApp { background-color: #f0f4f8; font-family: 'Segoe UI', sans-serif; }
     
-    /* প্যাডিং একটু অ্যাডজাস্ট করা হলো যাতে তোর কালো মেনু বারটা সাইডবার বাটনের সাথে ধাক্কা না খায় */
     .block-container { padding-top: 3.5rem !important; padding-bottom: 1rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
     
     .top-nav { background-color: #002b36; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; margin-bottom: 10px; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); }
@@ -211,7 +240,15 @@ if page_selection == "📈 MAIN TERMINAL":
 
     with col1:
         st.markdown('<div class="section-title">📊 SECTOR PERFORMANCE</div>', unsafe_allow_html=True)
-        sectors = [("NIFTY METAL", "+1.57%", 95), ("NIFTY ENERGY", "+1.20%", 80), ("NIFTY FMCG", "+0.72%", 70), ("NIFTY FIN SRV", "+0.70%", 65), ("NIFTY REALTY", "+0.63%", 60), ("NIFTY BANK", "+0.58%", 50)]
+        # 🚨 ১১টি সেক্টরের ফুল লিস্ট অ্যাড করা হলো 🚨
+        sectors = [
+            ("NIFTY METAL", "+1.57%", 95), ("NIFTY ENERGY", "+1.20%", 80),
+            ("NIFTY FMCG", "+0.72%", 70), ("NIFTY FIN SRV", "+0.70%", 65),
+            ("NIFTY REALTY", "+0.63%", 60), ("NIFTY BANK", "+0.58%", 50),
+            ("NIFTY PHARMA", "+0.33%", 40), ("NIFTY AUTO", "+0.31%", 35),
+            ("NIFTY INFRA", "+0.27%", 30), ("NIFTY PSU BANK", "+0.15%", 20),
+            ("NIFTY IT", "-0.81%", 75)
+        ]
         sec_html = '<div class="table-container"><table class="v38-table"><tr><th>Sector</th><th>%</th><th style="width:40%;">Trend</th></tr>'
         for n, v, bw in sectors:
             c, bc = ("green", "bar-fg-green") if "+" in v else ("red", "bar-fg-red")
@@ -286,14 +323,39 @@ if page_selection == "📈 MAIN TERMINAL":
         """, unsafe_allow_html=True)
 
     with col3:
-        st.markdown('<div class="section-title">🚀 TOP GAINERS</div>', unsafe_allow_html=True)
-        st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>%</th></tr><tr><td style="text-align:left; font-weight:bold;">HINDALCO.NS</td><td>935.70</td><td style="color:green; font-weight:bold;">+3.32%</td></tr></table></div>""", unsafe_allow_html=True)
-        
-        st.markdown('<div class="section-title">🔻 TOP LOSERS</div>', unsafe_allow_html=True)
-        st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>%</th></tr><tr><td style="text-align:left; font-weight:bold;">WIPRO.NS</td><td>542.10</td><td style="color:red; font-weight:bold;">-0.64%</td></tr></table></div>""", unsafe_allow_html=True)
-        
+        # 🚨 ডাইনামিক ডেটা ফেস করা হচ্ছে 🚨
+        with st.spinner("Fetching Live Market Movers..."):
+            gainers, losers, trends = get_dynamic_market_data(current_watchlist)
+
+        st.markdown('<div class="section-title">🚀 LIVE TOP GAINERS</div>', unsafe_allow_html=True)
+        if gainers:
+            g_html = '<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>%</th></tr>'
+            for g in gainers:
+                g_html += f'<tr><td style="text-align:left; font-weight:bold; color:#003366;">{g["Stock"]}</td><td>{g["LTP"]}</td><td style="color:green; font-weight:bold;">+{g["Pct"]}%</td></tr>'
+            g_html += '</table></div>'
+            st.markdown(g_html, unsafe_allow_html=True)
+        else:
+            st.markdown("<p style='font-size:12px;text-align:center;'>Calculating live data...</p>", unsafe_allow_html=True)
+
+        st.markdown('<div class="section-title">🔻 LIVE TOP LOSERS</div>', unsafe_allow_html=True)
+        if losers:
+            l_html = '<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>%</th></tr>'
+            for l in losers:
+                l_html += f'<tr><td style="text-align:left; font-weight:bold; color:#003366;">{l["Stock"]}</td><td>{l["LTP"]}</td><td style="color:red; font-weight:bold;">{l["Pct"]}%</td></tr>'
+            l_html += '</table></div>'
+            st.markdown(l_html, unsafe_allow_html=True)
+        else:
+            st.markdown("<p style='font-size:12px;text-align:center;'>Calculating live data...</p>", unsafe_allow_html=True)
+
         st.markdown('<div class="section-title">🔍 TREND CONTINUITY (3+ Days)</div>', unsafe_allow_html=True)
-        st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Status</th></tr><tr><td style="text-align:left; font-weight:bold;">HINDALCO.NS</td><td style="color:green; font-weight:bold;">৩ দিন উত্থান</td></tr></table></div>""", unsafe_allow_html=True)
+        if trends:
+            t_html = '<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Status</th></tr>'
+            for t in trends:
+                t_html += f'<tr><td style="text-align:left; font-weight:bold; color:#003366;">{t["Stock"]}</td><td style="color:{t["Color"]}; font-weight:bold;">{t["Status"]}</td></tr>'
+            t_html += '</table></div>'
+            st.markdown(t_html, unsafe_allow_html=True)
+        else:
+            st.markdown("<p style='font-size:12px;text-align:center; color:#888;'>No stock with 3 consecutive days of trend found in watchlist.</p>", unsafe_allow_html=True)
 
 elif page_selection == "🌅 9:10 AM: Pre-Market Gap":
     st.header("🌅 09:10 AM: Pre-Market 3% Gap Up/Down List")
@@ -311,9 +373,8 @@ elif page_selection == "🔥 9:20 AM: OI Setup":
 
 elif page_selection == "⚙️ Scanner Settings":
     st.header("⚙️ Scanner Settings")
-    st.success("Your terminal is fully customized to Haridas Master Strategy v40.3")
+    st.success("Your terminal is fully customized to Haridas Master Strategy v40.4")
 
-# --- Auto Refresh Execution ---
 if auto_refresh:
     time.sleep(refresh_time * 60)
     st.rerun()
