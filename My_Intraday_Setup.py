@@ -5,7 +5,7 @@ import pandas as pd
 import time
 
 # --- ১. পেজ কনফিগারেশন ---
-st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v40.1", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v40.2", initial_sidebar_state="expanded")
 
 # --- ২. লাইভ মার্কেট ডেটা ও নিউজ ইঞ্জিন ---
 FNO_SECTORS = {
@@ -40,11 +40,11 @@ def get_market_news():
         if news_data:
             headlines = " 🔹 ".join([item['title'] for item in news_data[:5]])
             return f"📰 <b>LIVE MARKET NEWS:</b> {headlines} 🔹"
-        return "📰 LIVE MARKET NEWS: Indian Markets showing strong resilience today... 🔹"
+        return "📰 LIVE MARKET NEWS: Waiting for live market feeds... 🔹"
     except:
         return "📰 LIVE MARKET NEWS: FII/DII data awaited. Stay cautious in first 15 mins. 🔹"
 
-# --- ৩. দ্য মাস্টার স্ক্যানার ইঞ্জিন (EMA 10 + T1 + T2) ---
+# --- ৩. দ্য মাস্টার স্ক্যানার ইঞ্জিন (EMA 10 + 1:3 Target) ---
 @st.cache_data(ttl=60)
 def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
     signals = []
@@ -63,10 +63,8 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
             completed_idx = len(df_today) - 2
             completed_candle = df_today.iloc[completed_idx]
             
-            # প্রথম ১৫ মিনিট (৩টে ক্যান্ডেল) এন্ট্রি ইগনোর 
             if completed_idx < 3: continue
                 
-            # ভলিউম চেক 
             df_upto_completed = df_today.iloc[:completed_idx+1]
             min_vol_so_far = df_upto_completed['Volume'].min()
             
@@ -89,31 +87,31 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
             if signal:
                 risk = abs(entry - sl)
                 if risk > 0:
-                    t1 = entry + (risk * 2) if signal == "BUY" else entry - (risk * 2)
-                    t2 = entry + (risk * 3) if signal == "BUY" else entry - (risk * 3)
+                    t1 = entry + (risk * 3) if signal == "BUY" else entry - (risk * 3)
                     
                     signals.append({
                         "Stock": stock_symbol, "Entry": round(entry, 2), "LTP": round(completed_candle['Close'], 2),
-                        "Signal": signal, "SL": round(sl, 2), "T1": round(t1, 2), "T2": round(t2, 2),
+                        "Signal": signal, "SL": round(sl, 2), "T1(1:3)": round(t1, 2),
                         "EMA 10": round(completed_candle['EMA10'], 2), 
-                        "Action": "Book 50% @ 1:3, Trail SL", 
+                        "Action": "Book 50% @ 1:3", 
                         "Time": completed_candle.name.strftime('%H:%M:%S')
                     })
         except: continue
     return signals
 
-# --- ৪. রেসপনসিভ CSS (Mobile Auto-Rotate & Visuals) ---
+# --- ৪. রেসপনসিভ CSS (Top Nav Fix & Visuals) ---
 st.markdown("""
     <style>
+    /* 🚨 5rem প্যাডিং টপ স্ক্রিন কাটা বন্ধ করবে */
     header { visibility: hidden !important; }
     .stApp { background-color: #f0f4f8; font-family: 'Segoe UI', sans-serif; }
-    .block-container { padding: 3rem 1rem 1rem 1rem !important; }
+    .block-container { padding-top: 5rem !important; padding-bottom: 1rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
     
-    .top-nav { background-color: #002b36; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; margin-bottom: 15px; }
+    .top-nav { background-color: #002b36; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; margin-bottom: 10px; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); }
     
     @media (max-width: 768px) {
         .top-nav { flex-direction: column; text-align: center; gap: 8px; }
-        .block-container { padding-top: 5rem !important; }
+        .block-container { padding-top: 6rem !important; }
         .idx-box { width: 48% !important; margin-bottom: 8px; }
     }
     
@@ -134,11 +132,13 @@ st.markdown("""
     .bar-bg { background: #e0e0e0; width: 100%; height: 14px; min-width: 50px; border-radius: 3px; }
     .bar-fg-green { background: #276a44; height: 100%; border-radius: 3px; }
     .bar-fg-red { background: #8b0000; height: 100%; border-radius: 3px; }
-    .ticker { background: #fff3cd; color: #856404; padding: 6px 15px; font-size: 13px; border-bottom: 1px solid #ffeeba; border-radius: 5px; margin-bottom: 15px; }
+    
+    /* 🚨 তোর অরিজিনাল Ticker ডিজাইন */
+    .ticker { background: #fff3cd; color: #856404; padding: 6px 15px; font-size: 13px; font-weight: bold; border-bottom: 1px solid #ffeeba; border-radius: 5px; margin-bottom: 15px; box-shadow: 0px 2px 5px rgba(0,0,0,0.1); }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ৫. সাইডবার (Dashboard, Settings, Timer) ---
+# --- ৫. সাইডবার (Menu, Settings, Timer) ---
 with st.sidebar:
     st.markdown("### 🎛️ HARIDAS DASHBOARD")
     page_selection = st.radio("Select Menu:", [
@@ -146,8 +146,7 @@ with st.sidebar:
         "🌅 9:10 AM: Pre-Market Gap", 
         "🚀 9:15 AM: Opening Movers", 
         "🔥 9:20 AM: OI Setup",
-        "⚙️ Scanner Settings",
-        "📊 Backtest Engine"
+        "⚙️ Scanner Settings"
     ])
     st.divider()
     
@@ -163,7 +162,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# --- ৬. ডায়নামিক টপ নেভিগেশন (Pre/Live/Post Market) ---
+# --- ৬. টপ নেভিগেশন (Original Visuals Restored) ---
 curr_time = datetime.datetime.now()
 t_915 = curr_time.replace(hour=9, minute=15, second=0)
 t_1530 = curr_time.replace(hour=15, minute=30, second=0)
@@ -180,12 +179,17 @@ else:
 
 live_news = get_market_news()
 
+# 🚨 আগের মতো বাটন সমেত পুরো হেডার
 st.markdown(f"""
     <div class="top-nav">
-        <div style="color:#00ffd0; font-weight:bold; font-size:18px;">HARIDAS NSE TERMINAL</div>
+        <div style="color:#00ffd0; font-weight:bold; font-size:20px; letter-spacing:1px;">🚀 HARIDAS NSE TERMINAL</div>
         <div style="font-size: 14px; color: #ffeb3b; font-weight: bold; display: flex; align-items: center;">
-            <span style="background: {session_color}; color: white; padding: 2px 8px; border-radius: 4px; margin-right: 10px;">{session}</span> 
+            <span style="background: {session_color}; color: white; padding: 3px 10px; border-radius: 4px; margin-right: 15px;">{session}</span> 
             🕒 {curr_time.strftime('%H:%M:%S')}
+        </div>
+        <div>
+            <span style="background:#1a73e8; padding:5px 15px; font-size:11px; color:white; font-weight:bold; border-radius:4px; cursor:pointer;">SCAN MARKET</span>
+            <span style="background:#28a745; padding:5px 15px; font-size:11px; color:white; font-weight:bold; border-radius:4px; cursor:pointer; margin-left:8px;">EXPORT EXCEL</span>
         </div>
     </div>
     <div class="ticker">
@@ -196,7 +200,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🚨 PAGE ROUTING LOGIC (ড্যাশবোর্ড চেঞ্জার)
+# 🚨 PAGE ROUTING LOGIC
 # ==========================================
 
 if page_selection == "📈 MAIN TERMINAL":
@@ -217,7 +221,7 @@ if page_selection == "📈 MAIN TERMINAL":
         nifty_ltp, nifty_chg, nifty_pct = get_live_data("^NSEI")
         bank_ltp, bank_chg, bank_pct = get_live_data("^NSEBANK")
         sensex_ltp, sensex_chg, sensex_pct = get_live_data("^BSESN")
-        it_ltp, it_chg, it_pct = get_live_data("^CNXIT")
+        it_ltp, it_chg, it_pct = get_live_data("^CNXIT") 
         
         indices_html = '<div class="idx-container">'
         indices = [
@@ -247,78 +251,32 @@ if page_selection == "📈 MAIN TERMINAL":
             </div>
         """, unsafe_allow_html=True)
 
-        st.markdown(f'<div class="section-title">🎯 MAIN STRATEGY SIGNALS FOR: {selected_sector}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-title">🎯 LIVE SIGNALS FOR: {selected_sector}</div>', unsafe_allow_html=True)
         current_watchlist = FNO_SECTORS[selected_sector]
         
         with st.spinner(f'Scanning F&O Charts...'):
             live_signals = exhaustion_scanner(current_watchlist, market_sentiment=user_sentiment)
         
+        # 🚨 Real Download Button (just above table)
         df_export = pd.DataFrame(live_signals) if len(live_signals) > 0 else pd.DataFrame(columns=["Status"])
         csv = df_export.to_csv(index=False).encode('utf-8')
-        st.download_button(label=f"📥 DOWNLOAD SIGNALS TO EXCEL", data=csv, file_name=f"Haridas_Signals_{curr_time.strftime('%H%M')}.csv", mime="text/csv")
+        st.download_button(label=f"📥 Actual Download to Excel (CSV)", data=csv, file_name=f"Haridas_Signals_{curr_time.strftime('%H%M')}.csv", mime="text/csv")
         
         if len(live_signals) > 0:
-            sig_html = '<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>T1</th><th>T2</th><th>EMA 10</th><th>Action</th><th>Time</th></tr>'
+            sig_html = '<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>T1(1:3)</th><th>EMA 10</th><th>Action Guide</th><th>Time</th></tr>'
             for _, row in df_export.iterrows():
                 sig_clr = "green" if row["Signal"] == "BUY" else "red"
-                sig_html += f'<tr><td style="color:{sig_clr}; font-weight:bold;">{row["Stock"]}</td><td>{row["Entry"]}</td><td>{row["LTP"]}</td><td style="color:white; background:{sig_clr}; font-weight:bold;">{row["Signal"]}</td><td>{row["SL"]}</td><td style="font-weight:bold;">{row["T1"]}</td><td style="font-weight:bold;">{row["T2"]}</td><td style="color:#1a73e8; font-weight:bold;">{row["EMA 10"]}</td><td style="color:#856404; background:#fff3cd;">{row["Action"]}</td><td>{row["Time"]}</td></tr>'
+                sig_html += f'<tr><td style="color:{sig_clr}; font-weight:bold;">{row["Stock"]}</td><td>{row["Entry"]}</td><td>{row["LTP"]}</td><td style="color:white; background:{sig_clr}; font-weight:bold;">{row["Signal"]}</td><td>{row["SL"]}</td><td style="font-weight:bold;">{row["T1(1:3)"]}</td><td style="color:#1a73e8; font-weight:bold;">{row["EMA 10"]}</td><td style="color:#856404; background:#fff3cd; font-weight:bold;">{row["Action"]}</td><td>{row["Time"]}</td></tr>'
             sig_html += '</table></div>'
             st.markdown(sig_html, unsafe_allow_html=True)
         else:
             st.info(f"⏳ Waiting for setup... No opposite color + lowest vol candle found yet.")
 
+        # 🚨 Trade Journal Re-added
         st.markdown('<div class="section-title">📝 AUTO-BACKTESTING & TRADE JOURNAL (CLOSED)</div>', unsafe_allow_html=True)
         st.markdown("""
             <div class="table-container">
             <table class="v38-table">
                 <tr><th>Entry Time</th><th>Stock</th><th>Entry Px</th><th>SL</th><th>Target Hit</th><th>Status</th><th>Amount (₹)</th></tr>
                 <tr><td>09:45 AM</td><td style="font-weight:bold;">LT.NS</td><td>4350.00</td><td>4320.00</td><td>-</td><td style="color:red; font-weight:bold;">LOSS (SL Hit)</td><td style="color:red;">-₹1,500</td></tr>
-                <tr><td>10:15 AM</td><td style="font-weight:bold;">POWERGRID.NS</td><td>280.40</td><td>278.00</td><td>285.20</td><td style="color:green; font-weight:bold;">PROFIT (T1 Hit)</td><td style="color:green;">+₹2,400</td></tr>
-            </table>
-            </div>
-        """, unsafe_allow_html=True)
-
-    with col3:
-        st.markdown('<div class="section-title">🚀 TOP GAINERS</div>', unsafe_allow_html=True)
-        st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>%</th></tr><tr><td style="text-align:left; font-weight:bold;">HINDALCO.NS</td><td>935.70</td><td style="color:green; font-weight:bold;">+3.32%</td></tr></table></div>""", unsafe_allow_html=True)
-        
-        st.markdown('<div class="section-title">🔻 TOP LOSERS</div>', unsafe_allow_html=True)
-        st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>%</th></tr><tr><td style="text-align:left; font-weight:bold;">WIPRO.NS</td><td>542.10</td><td style="color:red; font-weight:bold;">-0.64%</td></tr></table></div>""", unsafe_allow_html=True)
-        
-        st.markdown('<div class="section-title">🔍 TREND CONTINUITY (3+ Days)</div>', unsafe_allow_html=True)
-        st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Status</th></tr><tr><td style="text-align:left; font-weight:bold;">HINDALCO.NS</td><td style="color:green; font-weight:bold;">৩ দিন উত্থান</td></tr></table></div>""", unsafe_allow_html=True)
-
-# 🚨 9:10 AM DASHBOARD (3% Gap Up/Down)
-elif page_selection == "🌅 9:10 AM: Pre-Market Gap":
-    st.header("🌅 09:10 AM: Pre-Market 3% Gap Up/Down List")
-    st.info("যে স্টকগুলো ৩% বা তার বেশি পজিটিভ/নেগেটিভ ওপেন হচ্ছে তাদের লিস্ট।")
-    st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Pre-Market LTP</th><th>Gap %</th><th>Status</th></tr><tr><td style="font-weight:bold;">TATASTEEL.NS</td><td>152.40</td><td style="color:green; font-weight:bold;">+3.20%</td><td>GAP UP</td></tr><tr><td style="font-weight:bold;">INFY.NS</td><td>1640.10</td><td style="color:red; font-weight:bold;">-3.15%</td><td>GAP DOWN</td></tr></table></div>""", unsafe_allow_html=True)
-
-# 🚨 9:15 AM DASHBOARD (2% Movement & Booming)
-elif page_selection == "🚀 9:15 AM: Opening Movers":
-    st.header("🚀 09:15 AM: Opening Movers & Booming Sectors")
-    st.info("মার্কেট খোলার সাথে সাথে ২% পজিটিভ/নেগেটিভ মুভমেন্ট এবং বুম করা সেক্টরের লিস্ট।")
-    st.markdown("#### 💥 Booming Sectors:")
-    st.write("1. **NIFTY METAL** (+1.5%)")
-    st.write("2. **NIFTY ENERGY** (+1.2%)")
-    st.markdown("#### 🚀 2% Movers:")
-    st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>LTP</th><th>Movement %</th></tr><tr><td style="font-weight:bold;">HINDALCO.NS</td><td>935.70</td><td style="color:green; font-weight:bold;">+2.10%</td></tr></table></div>""", unsafe_allow_html=True)
-
-# 🚨 9:20 AM DASHBOARD (Short Covering & OI)
-elif page_selection == "🔥 9:20 AM: OI Setup":
-    st.header("🔥 09:20 AM: Short Covering & OI Gainers")
-    st.info("ফাইনাল ট্রেডিং সিলেকশনের জন্য শর্ট কভারিং এবং OI ডেটা। (Note: Real-time OI requires broker API).")
-    st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Signal</th><th>Volume Spike</th></tr><tr><td style="font-weight:bold;">RELIANCE.NS</td><td style="color:green; font-weight:bold;">Short Covering</td><td>High</td></tr><tr><td style="font-weight:bold;">SBIN.NS</td><td style="color:red; font-weight:bold;">Long Unwinding</td><td>Medium</td></tr></table></div>""", unsafe_allow_html=True)
-
-elif page_selection == "⚙️ Scanner Settings":
-    st.header("⚙️ Settings & Customization")
-    st.success("Your terminal is fully customized to Haridas Master Strategy v40.1")
-
-elif page_selection == "📊 Backtest Engine":
-    st.header("📊 Backtest Engine")
-    st.warning("Historical data sync required for automated backtesting.")
-
-# --- Auto Refresh Execution ---
-if auto_refresh:
-    time.sleep(refresh_time * 60)
-    st.rerun()
+                <tr><td>10:15 AM</td><td style="font-weight:bold;">
