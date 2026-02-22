@@ -1,5 +1,6 @@
 import streamlit as st
 import datetime
+import pytz
 import yfinance as yf
 import pandas as pd
 import time
@@ -38,8 +39,22 @@ NIFTY_50 = [
     "TATAMOTORS.NS", "TATASTEEL.NS", "TECHM.NS", "TITAN.NS", "ULTRACEMCO.NS", "UPL.NS", "WIPRO.NS"
 ]
 
-# 🚨 All Sectors Stocks + Nifty 50 for Advance/Decline and Global Scans
-ALL_STOCKS = list(set([stock for slist in FNO_SECTORS.values() for stock in slist] + NIFTY_50))
+# 🚨 NIFTY NEXT 50 to make the Advance/Decline true "ALL STOCKS" sentiment
+NIFTY_NEXT_50 = [
+    "ABB.NS", "ADANIENSOL.NS", "ADANIGREEN.NS", "AMBUJACEM.NS", "DMART.NS",
+    "BAJAJHLDNG.NS", "BANKBARODA.NS", "BEL.NS", "BOSCHLTD.NS", "CANBK.NS",
+    "CHOLAFIN.NS", "CGPOWER.NS", "COLPAL.NS", "DLF.NS", "DABUR.NS",
+    "GAIL.NS", "GODREJCP.NS", "HAL.NS", "HAVELLS.NS", "HEROMOTOCO.NS",
+    "HINDALCO.NS", "ICICIGI.NS", "ICICIPRULI.NS", "IDBI.NS", "INDIGO.NS",
+    "IOC.NS", "IRFC.NS", "JINDALSTEL.NS", "JIOFIN.NS", "LODHA.NS",
+    "MARICO.NS", "MUTHOOTFIN.NS", "NAUKRI.NS", "PIDILITIND.NS", "PFC.NS",
+    "PNB.NS", "RECLTD.NS", "SRF.NS", "MOTHERSON.NS", "SHREECEM.NS",
+    "SIEMENS.NS", "TVSMOTOR.NS", "TORNTPHARM.NS", "TRENT.NS", "UBL.NS",
+    "MCDOWELL-N.NS", "VBL.NS", "VEDL.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
+]
+
+# 🚨 All Sectors Stocks + Nifty 50 + Next 50 for True Advance/Decline (Market Sentiment)
+ALL_STOCKS = list(set([stock for slist in FNO_SECTORS.values() for stock in slist] + NIFTY_50 + NIFTY_NEXT_50))
 
 @st.cache_data(ttl=30)
 def get_live_data(ticker_symbol):
@@ -97,7 +112,8 @@ def get_adv_dec(stock_list):
         _, change, _ = get_live_data(ticker)
         return change
 
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    # Fetching 30 stocks at the same time to process the big list quickly
+    with ThreadPoolExecutor(max_workers=30) as executor:
         results = list(executor.map(fetch_chg, stock_list))
         
     for change in results:
@@ -270,10 +286,13 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# --- 6. Top Navigation ---
-curr_time = datetime.datetime.now()
-t_915 = curr_time.replace(hour=9, minute=15, second=0)
-t_1530 = curr_time.replace(hour=15, minute=30, second=0)
+# --- 6. Top Navigation (IST Time Zone Fix) ---
+ist_timezone = pytz.timezone('Asia/Kolkata')
+curr_time = datetime.datetime.now(ist_timezone)
+
+# Fix time objects for comparison to keep them timezone aware
+t_915 = curr_time.replace(hour=9, minute=15, second=0, microsecond=0)
+t_1530 = curr_time.replace(hour=15, minute=30, second=0, microsecond=0)
 
 if curr_time < t_915: session, session_color = "PRE-MARKET", "#ff9800" 
 elif curr_time <= t_1530: session, session_color = "LIVE MARKET", "#28a745" 
@@ -284,7 +303,7 @@ nav_html = (
     "<div style='color:#00ffd0; font-weight:bold; font-size:20px; letter-spacing:1px;'>📊 HARIDAS INTRADAY SETUP</div>"
     "<div style='font-size: 14px; color: #ffeb3b; font-weight: bold; display: flex; align-items: center;'>"
     f"<span style='background: {session_color}; color: white; padding: 3px 10px; border-radius: 4px; margin-right: 15px;'>{session}</span>"
-    f"🕒 {curr_time.strftime('%H:%M:%S')}"
+    f"🕒 {curr_time.strftime('%H:%M:%S')} (IST)"
     "</div>"
     "<div>"
     "<span style='background:#1a73e8; padding:5px 15px; font-size:11px; color:white; font-weight:bold; border-radius:4px; cursor:pointer;'>SCAN MARKET</span>"
@@ -334,7 +353,7 @@ if page_selection == "📈 MAIN TERMINAL":
         st.markdown(indices_html, unsafe_allow_html=True)
 
         # 🚨 PURE LIVE ADV/DEC FOR ALL STOCKS 🚨
-        with st.spinner("Calculating Adv/Dec for ALL Sectors..."):
+        with st.spinner("Calculating Adv/Dec for ALL Stocks..."):
             adv, dec = get_adv_dec(ALL_STOCKS)
         
         total_adv_dec = adv + dec
@@ -342,7 +361,7 @@ if page_selection == "📈 MAIN TERMINAL":
         
         adv_dec_html = (
             "<div class='adv-dec-container'>"
-            "<div style='font-size:12px; font-weight:bold; color:#003366;'>📊 REAL-TIME ADVANCE / DECLINE (ALL SECTORS)</div>"
+            "<div style='font-size:12px; font-weight:bold; color:#003366;'>📊 REAL-TIME ADVANCE / DECLINE (ALL STOCKS)</div>"
             "<div class='adv-dec-bar'>"
             f"<div class='bar-green' style='width: {adv_pct}%;'></div>"
             f"<div class='bar-red' style='width: {100-adv_pct}%;'></div>"
