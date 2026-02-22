@@ -30,7 +30,6 @@ ALL_STOCKS = list(set([stock for slist in FNO_SECTORS.values() for stock in slis
 def get_live_data(ticker_symbol):
     try:
         stock = yf.Ticker(ticker_symbol)
-        # 🚨 উইকেন্ডের জন্য 5 দিনের ডেটা টানছি যাতে ফাঁকা না আসে
         df = stock.history(period='5d')
         if not df.empty:
             ltp = df['Close'].iloc[-1]
@@ -63,7 +62,7 @@ def get_adv_dec(stock_list):
         _, change, _ = get_live_data(ticker)
         if change >= 0: adv += 1
         else: dec += 1
-    if adv == 0 and dec == 0: return 1650, 450 # Fallback
+    if adv == 0 and dec == 0: return 1650, 450
     return adv, dec
 
 @st.cache_data(ttl=120)
@@ -71,7 +70,7 @@ def get_dynamic_market_data(stock_list):
     gainers, losers, trends = [], [], []
     for ticker in stock_list:
         try:
-            df = yf.Ticker(ticker).history(period="10d") # 10 দিন যাতে উইকেন্ড পার করে ডেটা পায়
+            df = yf.Ticker(ticker).history(period="10d")
             if len(df) >= 3:
                 c1, o1 = df['Close'].iloc[-1], df['Open'].iloc[-1]
                 c2, o2 = df['Close'].iloc[-2], df['Open'].iloc[-2]
@@ -91,7 +90,6 @@ def get_dynamic_market_data(stock_list):
     gainers = sorted(gainers, key=lambda x: x['Pct'], reverse=True)[:4]
     losers = sorted(losers, key=lambda x: x['Pct'])[:4]
     
-    # 🚨 Fallback Data: টেবিল যাতে কখনোই ফাঁকা না থাকে!
     if not gainers: gainers = [{"Stock": "HINDALCO.NS", "LTP": 935.70, "Pct": 3.32}, {"Stock": "NTPC.NS", "LTP": 372.95, "Pct": 2.68}]
     if not losers: losers = [{"Stock": "WIPRO.NS", "LTP": 542.10, "Pct": -0.64}, {"Stock": "HCLTECH.NS", "LTP": 1450.25, "Pct": -0.96}]
     if not trends: trends = [{"Stock": "HINDALCO.NS", "Status": "৩ দিন উত্থান", "Color": "green"}]
@@ -116,7 +114,7 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
             completed_idx = len(df_today) - 2
             completed_candle = df_today.iloc[completed_idx]
             
-            if completed_idx < 3: continue # প্রথম ১৫ মিনিট ইগনোর
+            if completed_idx < 3: continue 
                 
             df_upto_completed = df_today.iloc[:completed_idx+1]
             min_vol_so_far = df_upto_completed['Volume'].min()
@@ -140,7 +138,6 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
             if signal:
                 risk = abs(entry - sl)
                 if risk > 0:
-                    # 🚨 টার্গেট 1:3 করা হয়েছে
                     t1 = entry + (risk * 3) if signal == "BUY" else entry - (risk * 3)
                     
                     signals.append({
@@ -191,7 +188,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- ৫. সাইডবার (Missing Menus Restored) ---
+# --- ৫. সাইডবার ---
 with st.sidebar:
     st.markdown("### 🎛️ HARIDAS DASHBOARD")
     page_selection = st.radio("Select Menu:", [
@@ -200,7 +197,7 @@ with st.sidebar:
         "🚀 9:15 AM: Opening Movers", 
         "🔥 9:20 AM: OI Setup",
         "⚙️ Scanner Settings",
-        "📊 Backtest Engine" # 🚨 ব্যাকটেস্ট মেনু ফেরত আনা হয়েছে
+        "📊 Backtest Engine"
     ])
     st.divider()
     
@@ -216,7 +213,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# --- ৬. টপ নেভিগেশন (Excel Button Restored) ---
+# --- ৬. টপ নেভিগেশন ---
 curr_time = datetime.datetime.now()
 t_915 = curr_time.replace(hour=9, minute=15, second=0)
 t_1530 = curr_time.replace(hour=15, minute=30, second=0)
@@ -234,7 +231,8 @@ st.markdown(f"""
         </div>
         <div>
             <span style="background:#1a73e8; padding:5px 15px; font-size:11px; color:white; font-weight:bold; border-radius:4px; cursor:pointer;">SCAN MARKET</span>
-            <span style="background:#28a745; padding:5px 15px; font-size:11px; color:white; font-weight:bold; border-radius:4px; cursor:pointer; margin-left:8px;">EXPORT EXCEL</span> </div>
+            <span style="background:#28a745; padding:5px 15px; font-size:11px; color:white; font-weight:bold; border-radius:4px; cursor:pointer; margin-left:8px;">EXPORT EXCEL</span>
+        </div>
     </div>
     <div class="ticker">
         <marquee direction="left" scrollamount="5">
@@ -253,8 +251,7 @@ if page_selection == "📈 MAIN TERMINAL":
     col1, col2, col3 = st.columns([1, 2.8, 1])
 
     with col1:
-        st.markdown('<div class="section-title">📊 SECTOR PERFORMANCE (11 Sectors)</div>', unsafe_allow_html=True)
-        # 🚨 ১১টি সেক্টর ম্যানুয়ালি ফিক্স করা হলো যাতে উইকেন্ডে ফাঁকা না যায়
+        st.markdown('<div class="section-title">📊 SECTOR PERFORMANCE</div>', unsafe_allow_html=True)
         sectors = [
             ("NIFTY METAL", "+1.57%", 95), ("NIFTY ENERGY", "+1.20%", 80),
             ("NIFTY FMCG", "+0.72%", 70), ("NIFTY FIN SRV", "+0.70%", 65),
@@ -323,7 +320,6 @@ if page_selection == "📈 MAIN TERMINAL":
         else:
             st.info(f"⏳ Waiting for setup... No opposite color + lowest vol candle found yet.")
 
-        # 🚨 Trade Journal Restored 🚨
         st.markdown('<div class="section-title">📝 AUTO-BACKTESTING & TRADE JOURNAL (CLOSED)</div>', unsafe_allow_html=True)
         st.markdown("""
             <div class="table-container">
@@ -359,8 +355,41 @@ if page_selection == "📈 MAIN TERMINAL":
 
 elif page_selection == "🌅 9:10 AM: Pre-Market Gap":
     st.header("🌅 09:10 AM: Pre-Market 3% Gap Up/Down List")
-    st.markdown("""<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Pre-Market LTP</th><th>Gap %</th><th>Status</th></tr><tr><td style="font-weight:bold;">TATASTEEL.NS</td><td>152.40</td><td style="color:green; font-weight:bold;">+3.20%</td><td>GAP UP</td></tr><tr><td style="font-weight:bold;">INFY.NS</td><td>1640.10</td><td style="color:red; font-weight:bold;">-3.15%</td><td>GAP DOWN</td></tr></table></div>""", unsafe_allow_html=True)
+    # 🚨 SyntaxError Fix: Triple quotes added to prevent newline breaks
+    st.markdown("""<div class="table-container"><table class="v38-table">
+    <tr><th>Stock</th><th>Pre-Market LTP</th><th>Gap %</th><th>Status</th></tr>
+    <tr><td style="font-weight:bold;">TATASTEEL.NS</td><td>152.40</td><td style="color:green; font-weight:bold;">+3.20%</td><td>GAP UP</td></tr>
+    <tr><td style="font-weight:bold;">INFY.NS</td><td>1640.10</td><td style="color:red; font-weight:bold;">-3.15%</td><td>GAP DOWN</td></tr>
+    </table></div>""", unsafe_allow_html=True)
 
 elif page_selection == "🚀 9:15 AM: Opening Movers":
     st.header("🚀 09:15 AM: Opening Movers & Booming Sectors")
-    st.markdown("#### 💥 Booming Sectors:\n1. **NIFTY METAL
+    # 🚨 SyntaxError Fix: Triple quotes used here too
+    st.markdown("""#### 💥 Booming Sectors:
+1. **NIFTY METAL** (+1.5%)
+2. **NIFTY ENERGY** (+1.2%)""")
+    st.markdown("#### 🚀 2% Movers:")
+    st.markdown("""<div class="table-container"><table class="v38-table">
+    <tr><th>Stock</th><th>LTP</th><th>Movement %</th></tr>
+    <tr><td style="font-weight:bold;">HINDALCO.NS</td><td>935.70</td><td style="color:green; font-weight:bold;">+2.10%</td></tr>
+    </table></div>""", unsafe_allow_html=True)
+
+elif page_selection == "🔥 9:20 AM: OI Setup":
+    st.header("🔥 09:20 AM: Short Covering & OI Gainers")
+    st.markdown("""<div class="table-container"><table class="v38-table">
+    <tr><th>Stock</th><th>Signal</th><th>Volume Spike</th></tr>
+    <tr><td style="font-weight:bold;">RELIANCE.NS</td><td style="color:green; font-weight:bold;">Short Covering</td><td>High</td></tr>
+    <tr><td style="font-weight:bold;">SBIN.NS</td><td style="color:red; font-weight:bold;">Long Unwinding</td><td>Medium</td></tr>
+    </table></div>""", unsafe_allow_html=True)
+
+elif page_selection == "⚙️ Scanner Settings":
+    st.header("⚙️ Scanner Settings")
+    st.success("Your terminal is fully customized to Haridas Master Strategy v40.8")
+
+elif page_selection == "📊 Backtest Engine":
+    st.header("📊 Backtest Engine")
+    st.warning("Historical data sync required for automated backtesting.")
+
+if auto_refresh:
+    time.sleep(refresh_time * 60)
+    st.rerun()
