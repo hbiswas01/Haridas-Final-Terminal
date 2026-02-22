@@ -5,9 +5,9 @@ import pandas as pd
 import time
 
 # --- ১. পেজ কনফিগারেশন ---
-st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v38.3", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v38.4", initial_sidebar_state="expanded")
 
-# --- ২. লাইভ মার্কেট ডেটা ও সেক্টর ম্যাপার ---
+# --- ২. লাইভ মার্কেট ডেটা ও নিউজ ইঞ্জিন ---
 FNO_SECTORS = {
     "MIXED WATCHLIST": ["HINDALCO.NS", "NTPC.NS", "WIPRO.NS", "RELIANCE.NS", "HDFCBANK.NS", "TCS.NS", "INFY.NS", "ITC.NS", "SBIN.NS", "BHARTIARTL.NS"],
     "NIFTY METAL": ["HINDALCO.NS", "TATASTEEL.NS", "VEDL.NS", "JSWSTEEL.NS", "NMDC.NS", "COALINDIA.NS"],
@@ -31,6 +31,19 @@ def get_live_data(ticker_symbol):
         return 0.0, 0.0, 0.0
     except:
         return 0.0, 0.0, 0.0
+
+# 🚨 নতুন ইঞ্জিন: লাইভ নিউজ টেনে আনার জন্য
+@st.cache_data(ttl=300) # ৫ মিনিট পর পর নিউজ আপডেট হবে
+def get_market_news():
+    try:
+        tk = yf.Ticker("RELIANCE.NS") # রিলায়েন্সের মাধ্যমে ভারতের বড় খবরগুলো পাওয়া যায়
+        news_data = tk.news
+        if news_data:
+            headlines = " 🔹 ".join([item['title'] for item in news_data[:5]])
+            return f"📰 <b>LIVE MARKET NEWS:</b> {headlines} 🔹"
+        return "🔥 <b>SYSTEM READY:</b> Real-time 5m Exhaustion Scanner Active | ⚠️ Wait for first 15 mins."
+    except:
+        return "🔥 <b>SYSTEM READY:</b> Real-time 5m Exhaustion Scanner Active | ⚠️ Wait for first 15 mins."
 
 # --- ৩. দ্য মাস্টার স্ক্যানার ইঞ্জিন (EMA 10) ---
 @st.cache_data(ttl=60)
@@ -81,15 +94,15 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
                     
                     signals.append({
                         "Stock": stock_symbol, "Entry": round(entry, 2), "LTP": round(completed_candle['Close'], 2),
-                        "Signal": signal, "SL": round(sl, 2), "T1": round(t1, 2), "T2": round(t2, 2),
+                        "Signal": signal, "SL": round(sl, 2), "T1(1:2)": round(t1, 2), "T2(1:3)": round(t2, 2),
                         "EMA 10": round(completed_candle['EMA10'], 2), 
                         "Action": "Book 50% @ T1",
-                        "Time": completed_candle.name.strftime('%H:%M:%S')
+                        "Pivot": pivot, "Time": completed_candle.name.strftime('%H:%M:%S')
                     })
         except: continue
     return signals
 
-# --- ৪. কাস্টম CSS (All Visual Bars Fixed) ---
+# --- ৪. কাস্টম CSS ---
 st.markdown("""
     <style>
     header { visibility: hidden !important; }
@@ -122,11 +135,11 @@ st.markdown("""
     .bar-bg { background: #e0e0e0; width: 100%; height: 14px; min-width: 50px; border-radius: 3px; }
     .bar-fg-green { background: #276a44; height: 100%; border-radius: 3px; }
     .bar-fg-red { background: #8b0000; height: 100%; border-radius: 3px; }
-    .ticker { background: #fff3cd; color: #856404; padding: 6px 15px; font-size: 13px; font-weight: bold; border-bottom: 1px solid #ffeeba; border-radius: 5px; margin-bottom: 15px; }
+    .ticker { background: #fff3cd; color: #856404; padding: 6px 15px; font-size: 13px; border-bottom: 1px solid #ffeeba; border-radius: 5px; margin-bottom: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ৫. সাইডবার (Dashboard, Setting & Excel Export) ---
+# --- ৫. সাইডবার ---
 with st.sidebar:
     st.markdown("### 🎛️ MAIN MENU")
     st.radio("Navigate to:", ["📈 Live Terminal", "⚙️ Scanner Settings", "📊 Backtest Engine"])
@@ -144,9 +157,12 @@ with st.sidebar:
     auto_refresh = st.checkbox("Enable Auto-Refresh", value=False)
     refresh_time = st.selectbox("Refresh Interval:", [1, 3, 5], index=0, format_func=lambda x: f"{x} Mins")
 
-# --- ৬. টপ নেভিগেশন ---
+# --- ৬. টপ নেভিগেশন (লাইভ নিউজ সহ) ---
 curr_time = datetime.datetime.now()
 session = "LIVE MARKET" if 9 <= curr_time.hour < 15 else "POST MARKET"
+
+# 🚨 লাইভ নিউজ ফেস করা হচ্ছে
+live_news = get_market_news()
 
 st.markdown(f"""
     <div class="top-nav">
@@ -161,7 +177,7 @@ st.markdown(f"""
     </div>
     <div class="ticker">
         <marquee direction="left" scrollamount="5">
-            🔥 <b>RULE ACTIVE:</b> Wait 15 mins -> Check 9:25 Adv/Dec -> Select Top Sector -> Find Opposite Color + Lowest Vol -> Book 50% at 1:2.
+            {live_news}
         </marquee>
     </div>
 """, unsafe_allow_html=True)
@@ -222,22 +238,20 @@ with col2:
     with st.spinner(f'Scanning {selected_sector} F&O Charts (5m)...'):
         live_signals = exhaustion_scanner(current_watchlist, market_sentiment=user_sentiment)
     
-    # 🚨 EXCEL EXPORT BUTTON ALWAYS VISIBLE
     df_export = pd.DataFrame(live_signals) if len(live_signals) > 0 else pd.DataFrame(columns=["Status"])
     csv = df_export.to_csv(index=False).encode('utf-8')
     st.download_button(label=f"📥 DOWNLOAD SIGNALS TO EXCEL", data=csv, file_name=f"Signals_{curr_time.strftime('%H%M')}.csv", mime="text/csv")
     
     if len(live_signals) > 0:
-        sig_html = '<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>T1</th><th>T2</th><th>EMA 10</th><th>Action</th><th>Time</th></tr>'
+        sig_html = '<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>T1(1:2)</th><th>T2(1:3)</th><th>EMA 10</th><th>Pivot</th><th>Time</th></tr>'
         for _, row in df_export.iterrows():
             sig_clr = "green" if row["Signal"] == "BUY" else "red"
-            sig_html += f'<tr><td style="color:{sig_clr}; font-weight:bold;">{row["Stock"]}</td><td>{row["Entry"]}</td><td>{row["LTP"]}</td><td style="color:white; background:{sig_clr}; font-weight:bold;">{row["Signal"]}</td><td>{row["SL"]}</td><td style="font-weight:bold;">{row["T1"]}</td><td>{row["T2"]}</td><td style="color:#1a73e8; font-weight:bold;">{row["EMA 10"]}</td><td style="color:#856404; background:#fff3cd;">{row["Action"]}</td><td>{row["Time"]}</td></tr>'
+            sig_html += f'<tr><td style="color:{sig_clr}; font-weight:bold;">{row["Stock"]}</td><td>{row["Entry"]}</td><td>{row["LTP"]}</td><td style="color:white; background:{sig_clr}; font-weight:bold;">{row["Signal"]}</td><td>{row["SL"]}</td><td style="font-weight:bold;">{row["T1(1:2)"]}</td><td>{row["T2(1:3)"]}</td><td style="color:#1a73e8; font-weight:bold;">{row["EMA 10"]}</td><td>{row["Pivot"]}</td><td>{row["Time"]}</td></tr>'
         sig_html += '</table></div>'
         st.markdown(sig_html, unsafe_allow_html=True)
     else:
         st.info(f"⏳ No Setup Found in {selected_sector} right now.")
 
-    # 🚨 AUTO BACKTESTING JOURNAL (RESTORED)
     st.markdown('<div class="section-title">📝 AUTO-BACKTESTING & TRADE JOURNAL (CLOSED)</div>', unsafe_allow_html=True)
     st.markdown("""
         <div class="table-container">
@@ -251,19 +265,6 @@ with col2:
 
 # --- RIGHT COLUMN ---
 with col3:
-    # 🚨 NEW FEATURE: MARKET NEWS
-    st.markdown('<div class="section-title">📰 LIVE MARKET NEWS</div>', unsafe_allow_html=True)
-    st.markdown("""
-        <div class="table-container">
-        <table class="v38-table">
-            <tr><th style="background-color: #ff9800;">Flash Updates</th></tr>
-            <tr><td style="text-align:left; font-weight:bold; white-space:normal;">🔴 Nifty 50 approaches major resistance at 25,600.</td></tr>
-            <tr><td style="text-align:left; font-weight:bold; white-space:normal;">🟢 Metal Sector surging on strong global cues.</td></tr>
-            <tr><td style="text-align:left; font-weight:bold; white-space:normal;">🔵 FII data indicates mild buying in cash segment.</td></tr>
-        </table>
-        </div>
-    """, unsafe_allow_html=True)
-
     st.markdown('<div class="section-title">🚀 TOP GAINERS</div>', unsafe_allow_html=True)
     st.markdown("""
         <div class="table-container">
@@ -275,7 +276,6 @@ with col3:
         </div>
     """, unsafe_allow_html=True)
 
-    # 🚨 RESTORED TOP LOSERS
     st.markdown('<div class="section-title">🔻 TOP LOSERS</div>', unsafe_allow_html=True)
     st.markdown("""
         <div class="table-container">
@@ -287,7 +287,6 @@ with col3:
         </div>
     """, unsafe_allow_html=True)
 
-    # 🚨 RESTORED TREND CONTINUITY
     st.markdown('<div class="section-title">🔍 TREND CONTINUITY (3+ Days)</div>', unsafe_allow_html=True)
     st.markdown("""
         <div class="table-container">
@@ -299,7 +298,6 @@ with col3:
         </div>
     """, unsafe_allow_html=True)
 
-# Auto-refresh logic
 if auto_refresh:
     time.sleep(refresh_time * 60)
     st.rerun()
