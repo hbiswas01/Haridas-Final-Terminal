@@ -5,9 +5,10 @@ import pandas as pd
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 
 # --- 1. Page Configuration ---
-st.set_page_config(layout="wide", page_title="Haridas Master Terminal v41.0", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="Haridas Intraday Setup", initial_sidebar_state="expanded")
 
 # --- 2. Live Market Data & PURE LIVE Engines (NO DUMMY DATA) ---
 FNO_SECTORS = {
@@ -24,8 +25,21 @@ FNO_SECTORS = {
     "NIFTY PSU BANK": ["SBIN.NS", "PNB.NS", "BOB.NS", "CANBK.NS"]
 }
 
-# 🚨 All Sectors Stocks for Advance/Decline and Global Scans
-ALL_STOCKS = list(set([stock for slist in FNO_SECTORS.values() for stock in slist]))
+# 🚨 NIFTY 50 Master List for Accurate Market Breadth
+NIFTY_50 = [
+    "ADANIENT.NS", "ADANIPORTS.NS", "APOLLOHOSP.NS", "ASIANPAINT.NS", "AXISBANK.NS", 
+    "BAJAJ-AUTO.NS", "BAJFINANCE.NS", "BAJAJFINSV.NS", "BPCL.NS", "BHARTIARTL.NS", 
+    "BRITANNIA.NS", "CIPLA.NS", "COALINDIA.NS", "DIVISLAB.NS", "DRREDDY.NS", 
+    "EICHERMOT.NS", "GRASIM.NS", "HCLTECH.NS", "HDFCBANK.NS", "HDFCLIFE.NS", 
+    "HEROMOTOCO.NS", "HINDALCO.NS", "HINDUNILVR.NS", "ICICIBANK.NS", "ITC.NS", 
+    "INDUSINDBK.NS", "INFY.NS", "JSWSTEEL.NS", "KOTAKBANK.NS", "LT.NS", "LTIM.NS", 
+    "M&M.NS", "MARUTI.NS", "NTPC.NS", "NESTLEIND.NS", "ONGC.NS", "POWERGRID.NS", 
+    "RELIANCE.NS", "SBILIFE.NS", "SBIN.NS", "SUNPHARMA.NS", "TCS.NS", "TATACONSUM.NS", 
+    "TATAMOTORS.NS", "TATASTEEL.NS", "TECHM.NS", "TITAN.NS", "ULTRACEMCO.NS", "UPL.NS", "WIPRO.NS"
+]
+
+# 🚨 All Sectors Stocks + Nifty 50 for Advance/Decline and Global Scans
+ALL_STOCKS = list(set([stock for slist in FNO_SECTORS.values() for stock in slist] + NIFTY_50))
 
 @st.cache_data(ttl=30)
 def get_live_data(ticker_symbol):
@@ -74,14 +88,22 @@ def get_real_sector_performance():
             results.append({"Sector": sector, "Pct": avg_pct, "Width": max(bw, 5)})
     return sorted(results, key=lambda x: x['Pct'], reverse=True)
 
-# 🚨 PURE LIVE Advance/Decline Logic
+# 🚨 SUPER FAST LIVE Advance/Decline Logic using Multi-Threading
 @st.cache_data(ttl=60)
 def get_adv_dec(stock_list):
     adv, dec = 0, 0
-    for ticker in stock_list:
+    
+    def fetch_chg(ticker):
         _, change, _ = get_live_data(ticker)
+        return change
+
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        results = list(executor.map(fetch_chg, stock_list))
+        
+    for change in results:
         if change > 0: adv += 1
         elif change < 0: dec += 1
+        
     return adv, dec
 
 @st.cache_data(ttl=120)
@@ -259,7 +281,7 @@ else: session, session_color = "POST MARKET", "#dc3545"
 
 nav_html = (
     "<div class='top-nav'>"
-    "<div style='color:#00ffd0; font-weight:bold; font-size:20px; letter-spacing:1px;'>📊 HARIDAS NSE TERMINAL</div>"
+    "<div style='color:#00ffd0; font-weight:bold; font-size:20px; letter-spacing:1px;'>📊 HARIDAS INTRADAY SETUP</div>"
     "<div style='font-size: 14px; color: #ffeb3b; font-weight: bold; display: flex; align-items: center;'>"
     f"<span style='background: {session_color}; color: white; padding: 3px 10px; border-radius: 4px; margin-right: 15px;'>{session}</span>"
     f"🕒 {curr_time.strftime('%H:%M:%S')}"
@@ -421,7 +443,7 @@ elif page_selection == "⚙️ Scanner Settings":
     st.header("⚙️ Scanner Settings")
     st.success("Your terminal is 100% PURE LIVE using yfinance. No Dummy Data is running in the background.")
 
-# 🚨 NEW REAL BACKTEST ENGINE ADDED HERE 🚨
+# 🚨 REAL BACKTEST ENGINE ADDED HERE 🚨
 elif page_selection == "📊 Backtest Engine":
     st.header("📊 Backtest Engine (Real Historical Data)")
     st.markdown("Test your **3-Day Continuous Trend (Uptrend/Downtrend)** strategy using historical market data.")
