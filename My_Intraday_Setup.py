@@ -23,33 +23,37 @@ def get_live_data(ticker_symbol):
     except:
         return 0.0, 0.0, 0.0
 
-# --- ৩. দ্য মাস্টার স্ক্যানার ইঞ্জিন (EMA 10 সহ) ---
+# --- ৩. দ্য মাস্টার স্ক্যানার ইঞ্জিন (EMA 10 আপডেটেড) ---
 @st.cache_data(ttl=60)
 def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
     signals = []
     for stock_symbol in stock_list:
         try:
             stock = yf.Ticker(stock_symbol)
-            # EMA 10 এর জন্য ২ দিনের ডেটা নিচ্ছি
+            # 🚨 EMA 10 নিখুঁত করতে ২ দিনের ডেটা নিচ্ছি [cite: 2026-02-21]
             df = stock.history(period="2d", interval="5m")
             
             if df.empty or len(df) < 15:
                 continue
             
-            # EMA 10 ক্যালকুলেশন
+            # EMA 10 ক্যালকুলেশন [cite: 2026-02-21]
             df['EMA10'] = df['Close'].ewm(span=10, adjust=False).mean()
             
-            completed_idx = len(df) - 2
-            completed_candle = df.iloc[-2]
+            today_date = df.index[-1].date()
+            df_today = df[df.index.date == today_date].copy()
+            if len(df_today) < 5: continue
             
+            completed_idx = len(df_today) - 2
+            completed_candle = df_today.iloc[completed_idx]
+            
+            # প্রথম ১৫ মিনিট ইগনোর [cite: 2026-02-06]
             if completed_idx < 3:
                 continue
                 
-            df_upto_completed = df.iloc[:completed_idx+1]
+            df_upto_completed = df_today.iloc[:completed_idx+1]
             min_vol_so_far = df_upto_completed['Volume'].min()
             
             is_lowest_vol = (completed_candle['Volume'] <= min_vol_so_far)
-            
             is_green = completed_candle['Close'] > completed_candle['Open']
             is_red = completed_candle['Close'] < completed_candle['Open']
             
@@ -58,13 +62,12 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
             
             if market_sentiment == "BULLISH" and is_red and is_lowest_vol:
                 signal = "BUY"
-                entry = completed_candle['High'] + 0.50 
-                sl = completed_candle['Low'] - 0.50     
-                
+                entry = completed_candle['High'] + 0.50
+                sl = completed_candle['Low'] - 0.50
             elif market_sentiment == "BEARISH" and is_green and is_lowest_vol:
                 signal = "SHORT"
-                entry = completed_candle['Low'] - 0.50  
-                sl = completed_candle['High'] + 0.50    
+                entry = completed_candle['Low'] - 0.50
+                sl = completed_candle['High'] + 0.50
                 
             if signal:
                 risk = abs(entry - sl)
@@ -76,48 +79,48 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
                     signals.append({
                         "Stock": stock_symbol, "Entry": round(entry, 2), "LTP": round(completed_candle['Close'], 2),
                         "Signal": signal, "SL": round(sl, 2), "T1(1:2)": round(t1, 2), "T2": round(t2, 2),
-                        "EMA 10": round(completed_candle['EMA10'], 2), # EMA 10 যোগ করা হলো
+                        "EMA 10": round(completed_candle['EMA10'], 2), # EMA 10 অ্যাড হলো
                         "Pivot": pivot, "Time": completed_candle.name.strftime('%H:%M:%S')
                     })
         except:
             continue
     return signals
 
-# --- ৪. কাস্টম CSS (Mobile Auto-Rotate ফিক্স সহ) ---
+# --- ৪. কাস্টম CSS (All Visual Bars Restored + Mobile Fix) ---
 st.markdown("""
     <style>
     header { visibility: hidden !important; }
-    .main .block-container { padding-top: 2rem !important; }
     .stApp { background-color: #f0f4f8; font-family: 'Segoe UI', sans-serif; }
+    .block-container { padding: 3.5rem 1rem 1rem 1rem !important; }
     
-    .top-nav { background-color: #002b36; padding: 8px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ccc; }
+    .top-nav { background-color: #002b36; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; margin-bottom: 15px; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); }
     
-    /* মোবাইলের জন্য Auto-Rotate এবং Header ফিক্স */
     @media (max-width: 768px) {
         .top-nav { flex-direction: column; text-align: center; gap: 8px; }
-        .idx-container { flex-wrap: wrap; }
-        .idx-box { width: 48%; margin-bottom: 5px; border-right: none; border: 1px solid #eee; }
+        .block-container { padding-top: 5.5rem !important; }
+        .idx-box { width: 48% !important; margin-bottom: 8px; }
     }
     
-    .section-title { color: #003366; font-size: 13px; font-weight: bold; padding: 4px 5px; text-transform: uppercase; margin-top: 5px; }
+    .section-title { color: #003366; font-size: 13px; font-weight: bold; padding: 4px 5px; text-transform: uppercase; margin-top: 5px; border-bottom: 2px solid #b0c4de; margin-bottom: 10px; }
     
-    /* টেবিল রেসপনসিভ করার জন্য Container */
-    .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; margin-bottom: 10px; }
-    .v38-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 11px; color: black; background: white; border: 1px solid #b0c4de; white-space: nowrap; }
-    .v38-table th { background-color: #4f81bd; color: white; padding: 5px; border: 1px solid #b0c4de; font-weight: bold; }
-    .v38-table td { padding: 5px; border: 1px solid #b0c4de; }
+    .table-container { overflow-x: auto; width: 100%; border-radius: 5px; }
+    .v38-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 11px; color: black; background: white; border: 1px solid #b0c4de; margin-bottom: 10px; white-space: nowrap; }
+    .v38-table th { background-color: #4f81bd; color: white; padding: 8px; border: 1px solid #b0c4de; font-weight: bold; }
+    .v38-table td { padding: 8px; border: 1px solid #b0c4de; }
     
-    .idx-container { display: flex; justify-content: space-between; background: white; border: 1px solid #b0c4de; padding: 5px; margin-bottom: 10px; }
-    .idx-box { text-align: center; width: 19%; border-right: 1px solid #eee; padding: 2px; }
+    .idx-container { display: flex; justify-content: space-between; background: white; border: 1px solid #b0c4de; padding: 5px; margin-bottom: 10px; flex-wrap: wrap; border-radius: 5px; }
+    .idx-box { text-align: center; width: 23%; border-right: 1px solid #eee; padding: 5px; min-width: 100px; }
     .idx-box:last-child { border-right: none; }
-    .adv-dec-container { background: white; border: 1px solid #b0c4de; padding: 8px; margin-bottom: 10px; text-align: center; }
-    .adv-dec-bar { display: flex; height: 12px; border-radius: 3px; overflow: hidden; margin: 5px 0; }
+    
+    /* 🚨 আগের বার আমি এই অংশটুকু দিতে ভুলে গেছিলাম! 🚨 */
+    .adv-dec-container { background: white; border: 1px solid #b0c4de; padding: 10px; margin-bottom: 10px; text-align: center; border-radius: 5px; }
+    .adv-dec-bar { display: flex; height: 14px; border-radius: 4px; overflow: hidden; margin: 8px 0; }
     .bar-green { background-color: #2e7d32; }
     .bar-red { background-color: #d32f2f; }
-    .bar-bg { background: #e0e0e0; width: 100%; height: 12px; }
-    .bar-fg-green { background: #276a44; height: 100%; }
-    .bar-fg-red { background: #8b0000; height: 100%; }
-    .ticker { background: #fff3cd; color: #856404; padding: 4px 10px; font-size: 12px; font-weight: bold; border-bottom: 1px solid #ffeeba; }
+    .bar-bg { background: #e0e0e0; width: 100%; height: 14px; min-width: 50px; border-radius: 3px; }
+    .bar-fg-green { background: #276a44; height: 100%; border-radius: 3px; }
+    .bar-fg-red { background: #8b0000; height: 100%; border-radius: 3px; }
+    .ticker { background: #fff3cd; color: #856404; padding: 6px 15px; font-size: 13px; font-weight: bold; border-bottom: 1px solid #ffeeba; border-radius: 5px; margin-bottom: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -135,10 +138,6 @@ with st.sidebar:
     st.success("✅ 9:25 Sentiment: BULLISH")
     st.success("✅ 9:30 Exhaustion Scanner: ACTIVE")
     st.info("EMA 10 Trailing: Enabled")
-    st.divider()
-    st.markdown("### 📝 TRADE JOURNAL")
-    st.text_area("Write Notes:", placeholder="Type notes here...", height=120, label_visibility="collapsed")
-    st.button("💾 Save Note", use_container_width=True)
 
 # --- ৬. টপ নেভিগেশন ---
 curr_time = datetime.datetime.now()
@@ -148,17 +147,16 @@ st.markdown(f"""
     <div class="top-nav">
         <div style="color:#00ffd0; font-weight:bold; font-size:18px;">HARIDAS NSE TERMINAL</div>
         <div style="font-size: 14px; color: #ffeb3b; font-weight: bold; display: flex; align-items: center;">
-            <span style="background: #ffeb3b; color: black; padding: 2px 8px; border-radius: 3px; margin-right: 10px;">{session}</span> 
+            <span style="background: #ffeb3b; color: black; padding: 2px 8px; border-radius: 4px; margin-right: 10px;">{session}</span> 
             🕒 {curr_time.strftime('%H:%M:%S')}
         </div>
         <div>
-            <span style="background:#1a73e8; padding:4px 15px; font-size:11px; color:white; font-weight:bold; cursor:pointer;">SCAN MARKET</span>
-            <span style="background:#28a745; padding:4px 15px; font-size:11px; color:white; font-weight:bold; margin-left:5px; cursor:pointer;">EXPORT EXCEL</span>
+            <span style="background:#1a73e8; padding:5px 15px; font-size:11px; color:white; font-weight:bold; cursor:pointer; border-radius:4px;">SCAN MARKET</span>
         </div>
     </div>
     <div class="ticker">
         <marquee direction="left" scrollamount="5">
-            🔥 <b>SYSTEM READY:</b> Real-time 5m Exhaustion Scanner | 🎯 EMA 10 Strategy Integrated | 📱 Mobile Auto-Rotate Ready.
+            🔥 <b>SYSTEM READY:</b> Real-time 5m Exhaustion Scanner | 🎯 Wait for first 15 mins | 📱 EMA 10 & Mobile Auto-Rotate Active.
         </marquee>
     </div>
 """, unsafe_allow_html=True)
@@ -169,10 +167,11 @@ col1, col2, col3 = st.columns([1, 2.8, 1])
 with col1:
     st.markdown('<div class="section-title">📊 SECTOR PERFORMANCE</div>', unsafe_allow_html=True)
     sectors = [("NIFTY METAL", "+1.57%", 95), ("NIFTY ENERGY", "+1.20%", 80), ("NIFTY FMCG", "+0.72%", 70), ("NIFTY FIN SRV", "+0.70%", 65), ("NIFTY REALTY", "+0.63%", 60), ("NIFTY BANK", "+0.58%", 50), ("NIFTY PHARMA", "+0.33%", 40), ("NIFTY AUTO", "+0.31%", 35), ("NIFTY INFRA", "+0.27%", 30), ("NIFTY PSU BANK", "+0.15%", 20), ("NIFTY IT", "-0.81%", 75)]
-    sec_html = '<div class="table-responsive"><table class="v38-table"><tr><th>Sector</th><th>%</th><th>Trend</th></tr>'
+    # 🚨 Trend কলামে width দিয়েছি যাতে বারগুলো সুন্দর দেখায়
+    sec_html = '<div class="table-container"><table class="v38-table"><tr><th>Sector</th><th>%</th><th style="width:40%;">Trend</th></tr>'
     for n, v, bw in sectors:
         c, bc = ("green", "bar-fg-green") if "+" in v else ("red", "bar-fg-red")
-        sec_html += f'<tr><td style="text-align:left; font-weight:bold; color:#003366;">{n}</td><td style="color:{c}; font-weight:bold;">{v}</td><td style="padding:2px;"><div class="bar-bg"><div class="{bc}" style="width:{bw}%;"></div></div></td></tr>'
+        sec_html += f'<tr><td style="text-align:left; font-weight:bold; color:#003366;">{n}</td><td style="color:{c}; font-weight:bold;">{v}</td><td style="padding:4px 8px;"><div class="bar-bg"><div class="{bc}" style="width:{bw}%;"></div></div></td></tr>'
     sec_html += '</table></div>'
     st.markdown(sec_html, unsafe_allow_html=True)
 
@@ -196,7 +195,6 @@ with col2:
     indices_html += '</div>'
     st.markdown(indices_html, unsafe_allow_html=True)
 
-    # 9:25 Sentiment Meter
     adv, dec = 1650, 450
     adv_pct = (adv / (adv + dec)) * 100 if (adv+dec) > 0 else 50
     st.markdown(f"""
@@ -212,10 +210,8 @@ with col2:
         </div>
     """, unsafe_allow_html=True)
 
-    # RUNNING THE SCANNER ENGINE
-    st.markdown('<div class="section-title">🎯 TRADING SIGNALS (EMA 10 & LOWEST VOL)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🎯 TRADING SIGNALS (Opposite Color + Day\'s Lowest Vol)</div>', unsafe_allow_html=True)
     
-    # F&O Watchlist
     fo_watchlist = [
         "HINDALCO.NS", "NTPC.NS", "WIPRO.NS", "RELIANCE.NS", "HDFCBANK.NS", 
         "TCS.NS", "INFY.NS", "ITC.NS", "SBIN.NS", "BHARTIARTL.NS"
@@ -226,20 +222,18 @@ with col2:
     
     if len(live_signals) > 0:
         df_signals = pd.DataFrame(live_signals)
-        # টেবিল হেডারে EMA 10 যোগ করা হয়েছে
-        sig_html = '<div class="table-responsive"><table class="v38-table"><tr><th>Stock</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>T1(1:2)</th><th>T2</th><th>EMA 10</th><th>Pivot</th><th>Time</th></tr>'
+        sig_html = '<div class="table-container"><table class="v38-table"><tr><th>Stock</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>T1(1:2)</th><th>T2</th><th>EMA 10</th><th>Pivot</th><th>Time</th></tr>'
         for _, row in df_signals.iterrows():
             sig_clr = "green" if row["Signal"] == "BUY" else "red"
-            sig_html += f'<tr><td style="color:{sig_clr}; font-weight:bold;">{row["Stock"]}</td><td>{row["Entry"]}</td><td>{row["LTP"]}</td><td style="color:white; background:{sig_clr}; font-weight:bold;">{row["Signal"]}</td><td>{row["SL"]}</td><td>{row["T1(1:2)"]}</td><td>{row["T2"]}</td><td>{row["EMA 10"]}</td><td>{row["Pivot"]}</td><td>{row["Time"]}</td></tr>'
+            sig_html += f'<tr><td style="color:{sig_clr}; font-weight:bold;">{row["Stock"]}</td><td>{row["Entry"]}</td><td>{row["LTP"]}</td><td style="color:white; background:{sig_clr}; font-weight:bold;">{row["Signal"]}</td><td>{row["SL"]}</td><td>{row["T1(1:2)"]}</td><td>{row["T2"]}</td><td style="font-weight:bold; color:#003366;">{row["EMA 10"]}</td><td>{row["Pivot"]}</td><td>{row["Time"]}</td></tr>'
         sig_html += '</table></div>'
         st.markdown(sig_html, unsafe_allow_html=True)
     else:
         st.info("⏳ Waiting for setup... No stocks currently match the Lowest Volume + Opposite Color condition.")
 
-    # Auto Backtesting Journal
     st.markdown('<div class="section-title">📝 AUTO-BACKTESTING & TRADE JOURNAL (CLOSED)</div>', unsafe_allow_html=True)
     st.markdown("""
-        <div class="table-responsive">
+        <div class="table-container">
         <table class="v38-table">
             <tr><th>Entry Time</th><th>Stock</th><th>Entry Px</th><th>SL</th><th>Target Hit</th><th>Status</th><th>Amount (₹)</th></tr>
             <tr><td>09:45 AM</td><td style="font-weight:bold;">LT.NS</td><td>4350.00</td><td>4320.00</td><td>-</td><td style="color:red; font-weight:bold;">LOSS (SL Hit)</td><td style="color:red;">-₹1,500</td></tr>
@@ -252,7 +246,7 @@ with col2:
 with col3:
     st.markdown('<div class="section-title">🚀 TOP GAINERS</div>', unsafe_allow_html=True)
     st.markdown("""
-        <div class="table-responsive">
+        <div class="table-container">
         <table class="v38-table">
             <tr><th>Stock</th><th>LTP</th><th>%</th></tr>
             <tr><td style="text-align:left; color:#003366; font-weight:bold;">HINDALCO.NS</td><td>935.70</td><td style="color:green; font-weight:bold;">+3.32%</td></tr>
@@ -263,7 +257,7 @@ with col3:
 
     st.markdown('<div class="section-title">🔻 TOP LOSERS</div>', unsafe_allow_html=True)
     st.markdown("""
-        <div class="table-responsive">
+        <div class="table-container">
         <table class="v38-table">
             <tr><th>Stock</th><th>LTP</th><th>%</th></tr>
             <tr><td style="text-align:left; color:#003366; font-weight:bold;">WIPRO.NS</td><td>542.10</td><td style="color:red; font-weight:bold;">-0.64%</td></tr>
@@ -274,7 +268,7 @@ with col3:
 
     st.markdown('<div class="section-title">🔍 TREND CONTINUITY (3+ Days)</div>', unsafe_allow_html=True)
     st.markdown("""
-        <div class="table-responsive">
+        <div class="table-container">
         <table class="v38-table">
             <tr><th>Stock</th><th>Status</th></tr>
             <tr><td style="text-align:left; color:#003366; font-weight:bold;">HINDALCO.NS</td><td style="color:green; font-weight:bold;">৩ দিন উত্থান</td></tr>
@@ -283,7 +277,6 @@ with col3:
         </div>
     """, unsafe_allow_html=True)
 
-# Auto-refresh logic
 if auto_refresh:
     time.sleep(60)
     st.rerun()
