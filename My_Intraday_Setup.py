@@ -3,9 +3,11 @@ import datetime
 import yfinance as yf
 import pandas as pd
 import time
+import urllib.request
+import xml.etree.ElementTree as ET
 
 # --- ১. পেজ কনফিগারেশন ---
-st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v40.6", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="Haridas Pro Master Terminal v40.7", initial_sidebar_state="expanded")
 
 # --- ২. লাইভ মার্কেট ডেটা ও ডাইনামিক ইঞ্জিন ---
 FNO_SECTORS = {
@@ -17,7 +19,6 @@ FNO_SECTORS = {
     "NIFTY AUTO": ["MARUTI.NS", "TATAMOTORS.NS", "M&M.NS", "BAJAJ-AUTO.NS", "HEROMOTOCO.NS"]
 }
 
-# সব সেক্টরের স্টকের একটা মাস্টার লিস্ট (ডাইনামিক স্ক্যানের জন্য)
 ALL_STOCKS = list(set([stock for slist in FNO_SECTORS.values() for stock in slist]))
 
 @st.cache_data(ttl=30)
@@ -35,23 +36,28 @@ def get_live_data(ticker_symbol):
     except:
         return 0.0, 0.0, 0.0
 
-@st.cache_data(ttl=300)
+# 🚨 রিয়েল লাইভ নিউজ ইঞ্জিন (Economic Times RSS Feed) 🚨
+@st.cache_data(ttl=300) # ৫ মিনিট পর পর টাটকা খবর আনবে
 def get_market_news():
-    tickers = ["RELIANCE.NS", "HDFCBANK.NS", "INFY.NS"]
-    headlines = []
-    for t in tickers:
-        try:
-            news = yf.Ticker(t).news
-            if news:
-                for n in news[:2]:
-                    if 'title' in n: headlines.append(n['title'])
-            if len(headlines) >= 3: break
-        except: pass
-    if headlines:
-        return " 🔹 ".join(headlines) + " 🔹"
-    return "📰 LIVE MARKET NEWS: Indian Markets tracking global cues. Trade carefully... 🔹"
+    try:
+        # ডাইরেক্ট ইকোনমিক টাইমসের মার্কেট ফিড
+        url = "https://economictimes.indiatimes.com/markets/rssfeeds/2146842.cms"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            xml_data = response.read()
+        root = ET.fromstring(xml_data)
+        headlines = []
+        for item in root.findall('.//item')[:5]: # টপ ৫টা খবর
+            title = item.find('title').text
+            if title: headlines.append(title.strip())
+        
+        if headlines:
+            return f"📰 <b>LIVE ET MARKET NEWS:</b> {' 🔹 '.join(headlines)} 🔹"
+    except:
+        pass
+    return "📰 <b>LIVE MARKET NEWS:</b> Fetching latest market feeds from servers... 🔹"
 
-# 🚨 রিয়েল সেক্টর পারফর্মেন্স ক্যালকুলেটর (NO DUMMY DATA) 🚨
+# 🚨 রিয়েল সেক্টর পারফর্মেন্স ক্যালকুলেটর
 @st.cache_data(ttl=60)
 def get_real_sector_performance():
     results = []
@@ -65,7 +71,7 @@ def get_real_sector_performance():
                 total_pct += pct
                 valid += 1
         avg_pct = round(total_pct / valid, 2) if valid > 0 else 0.0
-        bw = min(abs(avg_pct) * 20, 100) # Scaling width
+        bw = min(abs(avg_pct) * 20, 100) 
         results.append({"Sector": sector, "Pct": avg_pct, "Width": max(bw, 5)})
     return sorted(results, key=lambda x: x['Pct'], reverse=True)
 
@@ -101,7 +107,6 @@ def get_dynamic_market_data(stock_list):
         except: pass
     return sorted(gainers, key=lambda x: x['Pct'], reverse=True)[:4], sorted(losers, key=lambda x: x['Pct'])[:4], trends
 
-# 🚨 রিয়েল 9:10 AM গ্যাপ আপ/ডাউন স্ক্যানার 🚨
 @st.cache_data(ttl=60)
 def get_gap_scans(stock_list):
     gaps = []
@@ -119,7 +124,6 @@ def get_gap_scans(stock_list):
         except: pass
     return sorted(gaps, key=lambda x: abs(x['Pct']), reverse=True)
 
-# 🚨 রিয়েল 9:15 AM 2% মুভার্স স্ক্যানার 🚨
 @st.cache_data(ttl=60)
 def get_opening_movers(stock_list):
     movers = []
@@ -129,7 +133,6 @@ def get_opening_movers(stock_list):
             movers.append({"Stock": ticker, "LTP": ltp, "Pct": pct})
     return sorted(movers, key=lambda x: abs(x['Pct']), reverse=True)
 
-# 🚨 রিয়েল 9:20 AM প্রাইস-ভলিউম (Proxy OI) স্ক্যানার 🚨
 @st.cache_data(ttl=60)
 def get_oi_simulation(stock_list):
     setups = []
@@ -139,7 +142,7 @@ def get_oi_simulation(stock_list):
             if len(df) >= 2:
                 c1, v1 = df['Close'].iloc[-1], df['Volume'].iloc[-1]
                 c2, v2 = df['Close'].iloc[-2], df['Volume'].iloc[-2]
-                if v1 > (v2 * 1.5): # Significant volume spike
+                if v1 > (v2 * 1.5): 
                     if c1 > c2: setups.append({"Stock": ticker, "Signal": "Long Buildup (Bullish)", "Vol": "High", "Color": "green"})
                     else: setups.append({"Stock": ticker, "Signal": "Short Buildup (Bearish)", "Vol": "High", "Color": "red"})
         except: pass
@@ -277,7 +280,7 @@ st.markdown(f"""
     </div>
     <div class="ticker">
         <marquee direction="left" scrollamount="5">
-            📰 <b>LATEST:</b> {get_market_news()}
+            {get_market_news()}
         </marquee>
     </div>
 """, unsafe_allow_html=True)
@@ -330,6 +333,7 @@ if page_selection == "📈 MAIN TERMINAL":
                 <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:bold;">
                     <span style="color:green;">Advances: {adv}</span><span style="color:red;">Declines: {dec}</span>
                 </div>
+                <div style="font-size:10px; color:#555; margin-top:5px;">Strategy Sentiment selected: <b>{user_sentiment}</b> (Looking for opposite color candles)</div>
             </div>
         """, unsafe_allow_html=True)
 
@@ -419,7 +423,7 @@ elif page_selection == "🔥 9:20 AM: OI Setup":
 
 elif page_selection == "⚙️ Scanner Settings":
     st.header("⚙️ Scanner Settings")
-    st.success("Your terminal is fully dynamic and customized to Haridas Master Strategy v40.6 (No Fake Data!)")
+    st.success("Your terminal is fully dynamic and customized to Haridas Master Strategy v40.7 (Real Live News Active!)")
 
 if auto_refresh:
     time.sleep(refresh_time * 60)
