@@ -23,53 +23,49 @@ def get_live_data(ticker_symbol):
     except:
         return 0.0, 0.0, 0.0
 
-# --- ৩. দ্য মাস্টার স্ক্যানার ইঞ্জিন (লাইভ মার্কেট আপডেটেড) ---
+# --- ৩. দ্য মাস্টার স্ক্যানার ইঞ্জিন (EMA 10 সহ) ---
 @st.cache_data(ttl=60)
 def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
     signals = []
     for stock_symbol in stock_list:
         try:
             stock = yf.Ticker(stock_symbol)
-            df = stock.history(period="1d", interval="5m")
+            # EMA 10 এর জন্য ২ দিনের ডেটা নিচ্ছি
+            df = stock.history(period="2d", interval="5m")
             
-            # পর্যাপ্ত ডেটা না থাকলে স্কিপ (অন্তত ৫টা ক্যান্ডেল লাগবে)
-            if df.empty or len(df) < 5:
+            if df.empty or len(df) < 15:
                 continue
             
-            # 🚨 রিয়েল মার্কেট ফিক্স: রানিং ক্যান্ডেল (-1) বাদ দিয়ে, লাস্ট কমপ্লিট ক্যান্ডেল (-2) ধরছি
+            # EMA 10 ক্যালকুলেশন
+            df['EMA10'] = df['Close'].ewm(span=10, adjust=False).mean()
+            
             completed_idx = len(df) - 2
             completed_candle = df.iloc[-2]
             
-            # রুল ১: প্রথম ১৫ মিনিট (Index 0, 1, 2) ইগনোর
             if completed_idx < 3:
                 continue
                 
-            # রুল ২: ওই কমপ্লিট ক্যান্ডেল পর্যন্ত সারাদিনের ডেটা নিচ্ছি
             df_upto_completed = df.iloc[:completed_idx+1]
             min_vol_so_far = df_upto_completed['Volume'].min()
             
-            # চেক করছি এই কমপ্লিট ক্যান্ডেলটাই সারাদিনের লোয়েস্ট ভলিউম কি না
             is_lowest_vol = (completed_candle['Volume'] <= min_vol_so_far)
             
-            # ক্যান্ডেলের কালার
             is_green = completed_candle['Close'] > completed_candle['Open']
             is_red = completed_candle['Close'] < completed_candle['Open']
             
             signal = None
             entry = sl = 0.0
             
-            # রুল ৩: অপজিট কালার + লোয়েস্ট ভলিউম লজিক
             if market_sentiment == "BULLISH" and is_red and is_lowest_vol:
                 signal = "BUY"
-                entry = completed_candle['High'] + 0.50 # হাই ব্রেক করলে এন্ট্রি
-                sl = completed_candle['Low'] - 0.50     # লো হলো স্টপ-লস
+                entry = completed_candle['High'] + 0.50 
+                sl = completed_candle['Low'] - 0.50     
                 
             elif market_sentiment == "BEARISH" and is_green and is_lowest_vol:
                 signal = "SHORT"
-                entry = completed_candle['Low'] - 0.50  # লো ব্রেক করলে এন্ট্রি
-                sl = completed_candle['High'] + 0.50    # হাই হলো স্টপ-লস
+                entry = completed_candle['Low'] - 0.50  
+                sl = completed_candle['High'] + 0.50    
                 
-            # রুল ৪: 1:2 Risk to Reward
             if signal:
                 risk = abs(entry - sl)
                 if risk > 0:
@@ -80,52 +76,48 @@ def exhaustion_scanner(stock_list, market_sentiment="BULLISH"):
                     signals.append({
                         "Stock": stock_symbol, "Entry": round(entry, 2), "LTP": round(completed_candle['Close'], 2),
                         "Signal": signal, "SL": round(sl, 2), "T1(1:2)": round(t1, 2), "T2": round(t2, 2),
+                        "EMA 10": round(completed_candle['EMA10'], 2), # EMA 10 যোগ করা হলো
                         "Pivot": pivot, "Time": completed_candle.name.strftime('%H:%M:%S')
                     })
         except:
             continue
     return signals
 
-# --- ৪. আপডেট করা রেসপনসিভ CSS (Final v38 Look) ---
+# --- ৪. কাস্টম CSS (Mobile Auto-Rotate ফিক্স সহ) ---
 st.markdown("""
     <style>
-    /* স্ট্রিমলিট ক্লাউডের হেডার এড়ানোর জন্য মেইন প্যাডিং বাড়ানো হলো */
-    .block-container { 
-        padding-top: 3.5rem !important; 
-        padding-bottom: 0rem !important; 
-    }
-    
+    header { visibility: hidden !important; }
+    .main .block-container { padding-top: 2rem !important; }
     .stApp { background-color: #f0f4f8; font-family: 'Segoe UI', sans-serif; }
     
-    /* টপ বার ডিজাইন - আরও চওড়া ও পরিষ্কার করা হলো */
-    .top-nav { 
-        background-color: #002b36; 
-        padding: 15px 25px; 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
-        border-bottom: 4px solid #00ffd0; 
-        border-radius: 10px;
-        margin-bottom: 10px;
-        box-shadow: 0px 6px 15px rgba(0,0,0,0.4);
-    }
+    .top-nav { background-color: #002b36; padding: 8px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ccc; }
     
-    .nav-title { color: #00ffd0; font-size: 22px; font-weight: bold; letter-spacing: 1px; }
-    .nav-clock { color: #ffeb3b; font-size: 15px; font-weight: bold; }
-
-    /* মোবাইলের জন্য অটো-সাজিয়ে নেওয়ার লজিক */
+    /* মোবাইলের জন্য Auto-Rotate এবং Header ফিক্স */
     @media (max-width: 768px) {
-        .top-nav { flex-direction: column; text-align: center; gap: 10px; padding: 10px; }
-        .nav-title { font-size: 18px; }
+        .top-nav { flex-direction: column; text-align: center; gap: 8px; }
+        .idx-container { flex-wrap: wrap; }
+        .idx-box { width: 48%; margin-bottom: 5px; border-right: none; border: 1px solid #eee; }
     }
     
-    .v38-table-container { overflow-x: auto; width: 100%; border-radius: 8px; }
-    .v38-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 11px; background: white; border: 1px solid #b0c4de; }
-    .v38-table th { background-color: #4f81bd; color: white; padding: 12px; border: 1px solid #b0c4de; }
-    .v38-table td { padding: 10px; border: 1px solid #b0c4de; }
+    .section-title { color: #003366; font-size: 13px; font-weight: bold; padding: 4px 5px; text-transform: uppercase; margin-top: 5px; }
     
-    .idx-container { display: flex; flex-wrap: wrap; justify-content: space-around; gap: 10px; margin-bottom: 10px; }
-    .idx-box { background: white; border: 1px solid #b0c4de; padding: 12px; min-width: 140px; text-align: center; border-radius: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
+    /* টেবিল রেসপনসিভ করার জন্য Container */
+    .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; margin-bottom: 10px; }
+    .v38-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 11px; color: black; background: white; border: 1px solid #b0c4de; white-space: nowrap; }
+    .v38-table th { background-color: #4f81bd; color: white; padding: 5px; border: 1px solid #b0c4de; font-weight: bold; }
+    .v38-table td { padding: 5px; border: 1px solid #b0c4de; }
+    
+    .idx-container { display: flex; justify-content: space-between; background: white; border: 1px solid #b0c4de; padding: 5px; margin-bottom: 10px; }
+    .idx-box { text-align: center; width: 19%; border-right: 1px solid #eee; padding: 2px; }
+    .idx-box:last-child { border-right: none; }
+    .adv-dec-container { background: white; border: 1px solid #b0c4de; padding: 8px; margin-bottom: 10px; text-align: center; }
+    .adv-dec-bar { display: flex; height: 12px; border-radius: 3px; overflow: hidden; margin: 5px 0; }
+    .bar-green { background-color: #2e7d32; }
+    .bar-red { background-color: #d32f2f; }
+    .bar-bg { background: #e0e0e0; width: 100%; height: 12px; }
+    .bar-fg-green { background: #276a44; height: 100%; }
+    .bar-fg-red { background: #8b0000; height: 100%; }
+    .ticker { background: #fff3cd; color: #856404; padding: 4px 10px; font-size: 12px; font-weight: bold; border-bottom: 1px solid #ffeeba; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -148,38 +140,40 @@ with st.sidebar:
     st.text_area("Write Notes:", placeholder="Type notes here...", height=120, label_visibility="collapsed")
     st.button("💾 Save Note", use_container_width=True)
 
-# --- ৬. আপডেট করা টপ নেভিগেশন ও কলাম সিস্টেম ---
+# --- ৬. টপ নেভিগেশন ---
 curr_time = datetime.datetime.now()
-session_label = "LIVE MARKET" if 9 <= curr_time.hour < 15 else "POST MARKET"
-session_color = "#28a745" if session_label == "LIVE MARKET" else "#dc3545"
+session = "LIVE MARKET" if 9 <= curr_time.hour < 15 else "POST MARKET"
 
 st.markdown(f"""
     <div class="top-nav">
-        <div class="nav-title">🚀 HARIDAS MASTER TERMINAL v38.0</div>
-        <div style="display: flex; align-items: center; gap: 20px;">
-            <span style="background: {session_color}; color: white; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; box-shadow: 0px 2px 4px rgba(0,0,0,0.2);">
-                {session_label}
-            </span>
-            <div class="nav-clock">🕒 {curr_time.strftime('%H:%M:%S')}</div>
+        <div style="color:#00ffd0; font-weight:bold; font-size:18px;">HARIDAS NSE TERMINAL</div>
+        <div style="font-size: 14px; color: #ffeb3b; font-weight: bold; display: flex; align-items: center;">
+            <span style="background: #ffeb3b; color: black; padding: 2px 8px; border-radius: 3px; margin-right: 10px;">{session}</span> 
+            🕒 {curr_time.strftime('%H:%M:%S')}
+        </div>
+        <div>
+            <span style="background:#1a73e8; padding:4px 15px; font-size:11px; color:white; font-weight:bold; cursor:pointer;">SCAN MARKET</span>
+            <span style="background:#28a745; padding:4px 15px; font-size:11px; color:white; font-weight:bold; margin-left:5px; cursor:pointer;">EXPORT EXCEL</span>
         </div>
     </div>
-    <div style="background: #fff3cd; color: #856404; padding: 8px 15px; font-size: 13px; font-weight: bold; border-radius: 6px; margin-bottom: 15px; border: 1px solid #ffeeba; box-shadow: 0px 2px 5px rgba(0,0,0,0.05);">
-        <marquee scrollamount="5">🔥 <b>SYSTEM READY:</b> Real-time 5m Exhaustion Scanner Active | 🎯 Train Emptying Out logic online | 📱 Mobile Auto-Rotate Active.</marquee>
+    <div class="ticker">
+        <marquee direction="left" scrollamount="5">
+            🔥 <b>SYSTEM READY:</b> Real-time 5m Exhaustion Scanner | 🎯 EMA 10 Strategy Integrated | 📱 Mobile Auto-Rotate Ready.
+        </marquee>
     </div>
 """, unsafe_allow_html=True)
 
-# কলামগুলো এখানে ডিফাইন করছি যাতে 'NameError' না আসে
 col1, col2, col3 = st.columns([1, 2.8, 1])
-# এবার তোর বাকি কোড (with col1:, with col2: ইত্যাদি) কাজ করবে
+
 # --- LEFT COLUMN ---
 with col1:
     st.markdown('<div class="section-title">📊 SECTOR PERFORMANCE</div>', unsafe_allow_html=True)
     sectors = [("NIFTY METAL", "+1.57%", 95), ("NIFTY ENERGY", "+1.20%", 80), ("NIFTY FMCG", "+0.72%", 70), ("NIFTY FIN SRV", "+0.70%", 65), ("NIFTY REALTY", "+0.63%", 60), ("NIFTY BANK", "+0.58%", 50), ("NIFTY PHARMA", "+0.33%", 40), ("NIFTY AUTO", "+0.31%", 35), ("NIFTY INFRA", "+0.27%", 30), ("NIFTY PSU BANK", "+0.15%", 20), ("NIFTY IT", "-0.81%", 75)]
-    sec_html = '<table class="v38-table"><tr><th>Sector</th><th>%</th><th>Trend</th></tr>'
+    sec_html = '<div class="table-responsive"><table class="v38-table"><tr><th>Sector</th><th>%</th><th>Trend</th></tr>'
     for n, v, bw in sectors:
         c, bc = ("green", "bar-fg-green") if "+" in v else ("red", "bar-fg-red")
         sec_html += f'<tr><td style="text-align:left; font-weight:bold; color:#003366;">{n}</td><td style="color:{c}; font-weight:bold;">{v}</td><td style="padding:2px;"><div class="bar-bg"><div class="{bc}" style="width:{bw}%;"></div></div></td></tr>'
-    sec_html += '</table>'
+    sec_html += '</table></div>'
     st.markdown(sec_html, unsafe_allow_html=True)
 
 # --- MIDDLE COLUMN ---
@@ -219,7 +213,7 @@ with col2:
     """, unsafe_allow_html=True)
 
     # RUNNING THE SCANNER ENGINE
-    st.markdown('<div class="section-title">🎯 TRADING SIGNALS (Opposite Color + Day\'s Lowest Vol)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🎯 TRADING SIGNALS (EMA 10 & LOWEST VOL)</div>', unsafe_allow_html=True)
     
     # F&O Watchlist
     fo_watchlist = [
@@ -232,11 +226,12 @@ with col2:
     
     if len(live_signals) > 0:
         df_signals = pd.DataFrame(live_signals)
-        sig_html = '<table class="v38-table"><tr><th>Stock</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>T1(1:2)</th><th>T2</th><th>Pivot</th><th>Time</th></tr>'
+        # টেবিল হেডারে EMA 10 যোগ করা হয়েছে
+        sig_html = '<div class="table-responsive"><table class="v38-table"><tr><th>Stock</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>T1(1:2)</th><th>T2</th><th>EMA 10</th><th>Pivot</th><th>Time</th></tr>'
         for _, row in df_signals.iterrows():
             sig_clr = "green" if row["Signal"] == "BUY" else "red"
-            sig_html += f'<tr><td style="color:{sig_clr}; font-weight:bold;">{row["Stock"]}</td><td>{row["Entry"]}</td><td>{row["LTP"]}</td><td style="color:white; background:{sig_clr}; font-weight:bold;">{row["Signal"]}</td><td>{row["SL"]}</td><td>{row["T1(1:2)"]}</td><td>{row["T2"]}</td><td>{row["Pivot"]}</td><td>{row["Time"]}</td></tr>'
-        sig_html += '</table>'
+            sig_html += f'<tr><td style="color:{sig_clr}; font-weight:bold;">{row["Stock"]}</td><td>{row["Entry"]}</td><td>{row["LTP"]}</td><td style="color:white; background:{sig_clr}; font-weight:bold;">{row["Signal"]}</td><td>{row["SL"]}</td><td>{row["T1(1:2)"]}</td><td>{row["T2"]}</td><td>{row["EMA 10"]}</td><td>{row["Pivot"]}</td><td>{row["Time"]}</td></tr>'
+        sig_html += '</table></div>'
         st.markdown(sig_html, unsafe_allow_html=True)
     else:
         st.info("⏳ Waiting for setup... No stocks currently match the Lowest Volume + Opposite Color condition.")
@@ -244,40 +239,48 @@ with col2:
     # Auto Backtesting Journal
     st.markdown('<div class="section-title">📝 AUTO-BACKTESTING & TRADE JOURNAL (CLOSED)</div>', unsafe_allow_html=True)
     st.markdown("""
+        <div class="table-responsive">
         <table class="v38-table">
             <tr><th>Entry Time</th><th>Stock</th><th>Entry Px</th><th>SL</th><th>Target Hit</th><th>Status</th><th>Amount (₹)</th></tr>
             <tr><td>09:45 AM</td><td style="font-weight:bold;">LT.NS</td><td>4350.00</td><td>4320.00</td><td>-</td><td style="color:red; font-weight:bold;">LOSS (SL Hit)</td><td style="color:red;">-₹1,500</td></tr>
             <tr><td>10:15 AM</td><td style="font-weight:bold;">POWERGRID.NS</td><td>280.40</td><td>278.00</td><td>285.20</td><td style="color:green; font-weight:bold;">PROFIT (T1 Hit)</td><td style="color:green;">+₹2,400</td></tr>
         </table>
+        </div>
     """, unsafe_allow_html=True)
 
 # --- RIGHT COLUMN ---
 with col3:
     st.markdown('<div class="section-title">🚀 TOP GAINERS</div>', unsafe_allow_html=True)
     st.markdown("""
+        <div class="table-responsive">
         <table class="v38-table">
             <tr><th>Stock</th><th>LTP</th><th>%</th></tr>
             <tr><td style="text-align:left; color:#003366; font-weight:bold;">HINDALCO.NS</td><td>935.70</td><td style="color:green; font-weight:bold;">+3.32%</td></tr>
             <tr><td style="text-align:left; color:#003366; font-weight:bold;">NTPC.NS</td><td>372.95</td><td style="color:green; font-weight:bold;">+2.68%</td></tr>
         </table>
+        </div>
     """, unsafe_allow_html=True)
 
     st.markdown('<div class="section-title">🔻 TOP LOSERS</div>', unsafe_allow_html=True)
     st.markdown("""
+        <div class="table-responsive">
         <table class="v38-table">
             <tr><th>Stock</th><th>LTP</th><th>%</th></tr>
             <tr><td style="text-align:left; color:#003366; font-weight:bold;">WIPRO.NS</td><td>542.10</td><td style="color:red; font-weight:bold;">-0.64%</td></tr>
             <tr><td style="text-align:left; color:#003366; font-weight:bold;">HCLTECH.NS</td><td>1450.25</td><td style="color:red; font-weight:bold;">-0.96%</td></tr>
         </table>
+        </div>
     """, unsafe_allow_html=True)
 
     st.markdown('<div class="section-title">🔍 TREND CONTINUITY (3+ Days)</div>', unsafe_allow_html=True)
     st.markdown("""
+        <div class="table-responsive">
         <table class="v38-table">
             <tr><th>Stock</th><th>Status</th></tr>
             <tr><td style="text-align:left; color:#003366; font-weight:bold;">HINDALCO.NS</td><td style="color:green; font-weight:bold;">৩ দিন উত্থান</td></tr>
             <tr><td style="text-align:left; color:#003366; font-weight:bold;">MARUTI.NS</td><td style="color:red; font-weight:bold;">৩ দিন পতন</td></tr>
         </table>
+        </div>
     """, unsafe_allow_html=True)
 
 # Auto-refresh logic
